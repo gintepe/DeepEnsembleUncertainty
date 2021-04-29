@@ -9,7 +9,7 @@ import mnist
 import cifar10
 import constants
 from models import *
-from train import train
+from train import train, train_simple_ensemble
 
 def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, num_workers):
     """
@@ -30,6 +30,9 @@ parser.add_argument('--dataset_type', type=str, default='mnist',
                     choices=['cifar10', 'mnist'], help='Dataset name')
 parser.add_argument('--num-workers', type=int, default=0,
                     help='Number of CPU cores to load data on')
+parser.add_argument('--method', type=str, default='single',
+                    choices=['single', 'ensemble'],
+                    help='method to run')
 parser.add_argument('--batch-size', type=int, default=250,
                     help='Batch size to use in training')
 parser.add_argument('--epochs', type=int, default=15,
@@ -67,9 +70,18 @@ if __name__ == '__main__':
                                 num_workers=args.num_workers,
                                 )
     
-    model = LeNet5().to(device)
+    if args.method == 'single':
+        model = LeNet5().to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr,)
-    criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(model.parameters(), lr=args.lr,)
+        criterion = nn.CrossEntropyLoss()
 
-    train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
+        train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
+
+    if args.method == 'ensemble':
+        model = SimpleEnsemble(LeNet5, n=args.n).to(device)
+
+        optimizers = [optim.Adam(m.parameters(), lr=args.lr,) for m in model.networks]
+        # TODO fix the loss!
+        criterion = nn.CrossEntropyLoss()
+        train_simple_ensemble(model, train_loader, val_loader, criterion, optimizers, args.epochs, device=device)
