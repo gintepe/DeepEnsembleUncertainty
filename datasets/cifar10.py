@@ -6,7 +6,7 @@ from torchvision import datasets
 from torchvision import transforms
 from torch.utils.data.sampler import SubsetRandomSampler
 
-import data_util 
+import datasets.data_util as data_util 
 
 import constants
 

@@ -3,13 +3,18 @@ import wandb
 import torch
 import torch.optim as optim
 import torch.nn as nn
+import numpy as np
 
-
-import mnist
-import cifar10
+import datasets.mnist as mnist
+import datasets.cifar10 as cifar10
+from methods.mcdropout import train as mcd_train, evaluate as mcd_eval, models as mcd_models
+from methods.ensemble import train as ens_train, evaluate as ens_eval, models as ens_models
+import methods.models
+import methods.general_loops
 import constants
-from models import *
-from train import train, train_simple_ensemble
+import metrics
+# from train import train, train_simple_ensemble, basic_cross_entropy
+# from evaluate import test
 
 def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, num_workers):
     """
@@ -26,12 +31,12 @@ def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, 
                                                         num_workers=num_workers)
 
 parser = argparse.ArgumentParser(description='Train a configurable ensemble on a given dataset.')
-parser.add_argument('--dataset_type', type=str, default='mnist',
+parser.add_argument('--dataset-type', type=str, default='mnist',
                     choices=['cifar10', 'mnist'], help='Dataset name')
 parser.add_argument('--num-workers', type=int, default=0,
                     help='Number of CPU cores to load data on')
 parser.add_argument('--method', type=str, default='single',
-                    choices=['single', 'ensemble'],
+                    choices=['single', 'ensemble', 'mcdrop'],
                     help='method to run')
 parser.add_argument('--batch-size', type=int, default=250,
                     help='Batch size to use in training')
@@ -56,7 +61,7 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
 
-    wandb.init(project='mphil', entity='gintepe', dir=constants.LOGGING_DIR)
+    wandb.init(project=f'mphil-{args.dataset_type}', entity='gintepe', dir=constants.LOGGING_DIR)
     wandb.config.update(args)
     
 
@@ -70,18 +75,48 @@ if __name__ == '__main__':
                                 num_workers=args.num_workers,
                                 )
     
+    pred_fn = lambda m, x: m(x)
+
     if args.method == 'single':
-        model = LeNet5().to(device)
+        model = methods.models.LeNet5().to(device)
 
         optimizer = optim.Adam(model.parameters(), lr=args.lr,)
         criterion = nn.CrossEntropyLoss()
+        train = methods.general_loops.train
+        test = methods.general_loops.test
+        # train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
 
-        train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
+    if args.method == 'mcdrop':
+        model = mcd_models.LeNet5MCDropout(dropout_p=0.5).to(device)
+
+        optimizer = optim.Adam(model.parameters(), lr=args.lr,)
+        criterion = nn.CrossEntropyLoss()
+        train = mcd_train.train
+        test = mcd_eval.test
+        # train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
+        # pred_fn = lambda m, x: m.mc_predict(x, args.n)
 
     if args.method == 'ensemble':
-        model = SimpleEnsemble(LeNet5, n=args.n).to(device)
+        model = ens_models.SimpleEnsemble(methods.models.LeNet5, n=args.n).to(device)
 
-        optimizers = [optim.Adam(m.parameters(), lr=args.lr,) for m in model.networks]
-        # TODO fix the loss!
+        optimizer = [optim.Adam(m.parameters(), lr=args.lr,) for m in model.networks]
         criterion = nn.CrossEntropyLoss()
-        train_simple_ensemble(model, train_loader, val_loader, criterion, optimizers, args.epochs, device=device)
+        train = ens_train.train
+        test = ens_eval.test
+        # train_simple_ensemble(model, train_loader, val_loader, criterion, optimizers, args.epochs, device=device)
+
+    train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
+
+    for i in np.arange(0, 31, 15):
+        print(f'\nShift: {i}\n')
+
+        test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=args.corrupted_test, intensity=i)
+        metric_dict = {'NLL': lambda p, g: metrics.basic_cross_entropy(p, g).item(), 
+                        'ECE': metrics.wrap_ece(bins=20), 
+                        'Brier': metrics.wrap_brier()}
+        acc, metric_res = test(model, test_loader=test_loader, metric_dict=metric_dict, 
+                                device=device)
+
+        wandb.log({'MNIST shifted accuracy': acc, 'shift': i})
+        for name, val in metric_res.items():
+            wandb.log({f'MNIST shifted {name}': val, 'shift': i})

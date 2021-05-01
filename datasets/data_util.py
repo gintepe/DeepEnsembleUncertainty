@@ -7,8 +7,15 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets
 from torchvision import transforms
 from torch.utils.data.sampler import SubsetRandomSampler
+# from torchvision.utils import make_grid
+# import matplotlib.pyplot as plt
 
 import constants
+
+# def show_images(images, intensity, nmax=64,):
+#     fig, ax = plt.subplots(figsize=(8, 8))
+#     ax.set_xticks([]); ax.set_yticks([])
+#     plt.imshow(f'batch_ex_shift_{intensity}', make_grid((images.detach()[:nmax]), nrow=8).permute(1, 2, 0))
 
 def get_train_valid_loader(data_dir,
                            batch_size,

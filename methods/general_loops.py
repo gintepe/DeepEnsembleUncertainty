@@ -2,6 +2,7 @@ import torch
 import wandb
 
 from tqdm import tqdm
+from collections import defaultdict
 # basic training loop for a single network
 
 def log_info(train_acc, val_loss, val_acc, batches, epoch):
@@ -9,7 +10,7 @@ def log_info(train_acc, val_loss, val_acc, batches, epoch):
     wandb.log({'Validation loss': val_loss, 'batch': batches, 'epoch': epoch})
     wandb.log({'Validation accuracy': val_acc, 'batch': batches, 'epoch': epoch})
 
-def validate(model, val_loader, criterion, device, is_single_output=True):    
+def validate(model, val_loader, criterion, device, pred=lambda m, x: m(x)):    
     
     print('\nValidating')
     
@@ -23,11 +24,7 @@ def validate(model, val_loader, criterion, device, is_single_output=True):
             
             X, y = X.to(device), y.to(device)
 
-            if is_single_output:
-                y_hat = model(X)
-            else:
-                # assumes that for multi-output setups overall prediction will be first output
-                y_hat = model(X)[0]
+            y_hat = pred(model, X)
 
             loss = criterion(y_hat, y)
 
@@ -94,61 +91,40 @@ def train(model,
         if log:
             log_info(correct/total, val_loss, val_acc, batches, epoch)
 
+def test(model, test_loader, metric_dict, device, is_single_output=True, pred=lambda m, x: m(x)):    
     
-def train_simple_ensemble(model,
-         train_loader,
-         val_loader,
-         criterion,
-         optimizers,
-         epochs,
-         log=True,
-         device='cpu'):
-
-    batches = 0
+    print('\nTesting')
     
-    if log:
-        wandb.watch(model)
-    
-    for epoch in range(1, epochs + 1):
-        model.train()
+    cum_loss = 0
+    total = 0
+    correct = 0
 
-        print(f'Epoch {epoch}')
-        correct = 0
-        total = 0
-
-        with tqdm(train_loader, unit="batch") as tepoch:
+    model.eval()
+    with torch.no_grad():
+        with tqdm(test_loader, unit="batch") as tepoch:
+            metric_accumulators = defaultdict(int)
             for X, y in tepoch:
                 
                 X, y = X.to(device), y.to(device)
-                [optimizer.zero_grad() for optimizer in optimizers]
-                
-                pred, y_hats = model(X)
 
-                losses = [criterion(y_hat, y) for y_hat in y_hats]
+                if is_single_output:
+                    y_hat = torch.nn.functional.softmax(pred(model, X), dim=-1)
+                else:
+                    y_hat = pred(model, X)
 
-                loss = 0
-                for i in range(len(losses)):
-                    losses[i].backward()
-                    optimizers[i].step()
+                for name, metric in metric_dict.items():
+                    metric_val = metric(y_hat, y)
+                    # assumes all metrics are mean-reduced
+                    metric_accumulators[name] += metric_val * X.size(0)
 
-                    loss += losses[i].item()
+                total += X.size(0)
 
-                tepoch.set_postfix(loss=loss/len(losses))
-
-                batches += 1
-
-                _, predicted = torch.max(pred, 1)
+                _, predicted = torch.max(y_hat, 1)
                 correct += (predicted == y).sum().item()
-                total += X.shape[0]
 
-                if log:
-                    wandb.log({'(Ensemble) Mean Training loss': loss/len(losses), 'batch': batches})
-
-        val_loss, val_acc = validate(model, val_loader, basic_cross_entropy, device, is_single_output=False)
-
-        if log:
-            log_info(correct/total, val_loss, val_acc, batches, epoch)
-
-def basic_cross_entropy(probs, gt):
-    nll = torch.nn.NLLLoss()
-    return nll(torch.log(probs), gt)
+        print(f'Results: \nAccuracy: {correct/total}')
+        for name, val in metric_accumulators.items():
+            metric_accumulators[name] = val/total
+            print(f'{name}: {metric_accumulators[name]}')
+            
+    return correct / total, metric_accumulators

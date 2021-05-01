@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import random
 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets
@@ -8,7 +9,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import torchvision.transforms.functional as TF
 
 
-import data_util 
+import datasets.data_util as data_util 
 import constants
 
 def get_mnist_train_valid_loader(data_dir,
@@ -80,7 +81,7 @@ def get_test_loader(data_dir,
     -------
     - data_loader: test set iterator.
     """
-    normalize =transforms.Normalize((0.1307,), (0.3081,) )
+    normalize = transforms.Normalize(constants.MNIST_MEAN, constants.MNIST_STD)
 
     # define transform
     transform = transforms.Compose([
@@ -109,19 +110,23 @@ class RotatedMNISTTest(Dataset):
     def __init__(self, data_dir, rotation, transform=None):
         self.images, self.labels = data_util.load_mnist(data_dir, 't10k')
         self.transform=transform
-        self.rotation = rotation
+        self.rotation=rotation
 
     def __len__(self):
         return(self.images.shape[0])
 
     def __getitem__(self, idx):
 
-        img = TF.rotate(self.images, np.random.choice([-1, 1])*self.rotation)
+        img = self.images[idx].reshape((28, 28, 1))
+
+        normalize = transforms.Normalize(constants.MNIST_MEAN, constants.MNIST_STD)
 
         if self.transform:
             img = self.transform(img)
+
+        img = TF.rotate(img, float(random.choice([-1, 1])*self.rotation))
         
-        return img, self.labels[idx]
+        return img, int(self.labels[idx])
 
 
 def get_MNIST_loaders(data_dir, 

@@ -16,6 +16,19 @@ import scipy
 # * NLL for classification is equivalent to the cross entropy, commonly used as loss
 # * Entropy has standard implementations in scipy
 
+def basic_cross_entropy(probs, gt):
+    nll = torch.nn.NLLLoss()
+    return nll(torch.log(probs), gt)
+
+def wrap_ece(bins):
+  return lambda prob, gt: expected_calibration_error_multiclass(
+                                                prob.cpu().numpy(), 
+                                                gt.cpu().numpy(), 
+                                                bins)
+
+def wrap_brier():
+  return lambda prob, gt: np.mean(brier_scores(gt.cpu().numpy(), prob.cpu().numpy()))
+
 def bin_predictions_and_accuracies(probabilities, ground_truth, bins=10):
   """A helper function which histograms a vector of probabilities into bins.
   Args:
