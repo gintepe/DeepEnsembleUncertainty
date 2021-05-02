@@ -5,12 +5,11 @@ from tqdm import tqdm
 from methods.general_loops import *
 from metrics import basic_cross_entropy
 
-#TODO: parameter naming convention!
 def train(model,
          train_loader,
          val_loader,
          criterion,
-         optimizers,
+         optimizer,
          epochs,
          log=True,
          device='cpu'):
@@ -31,7 +30,7 @@ def train(model,
             for X, y in tepoch:
                 
                 X, y = X.to(device), y.to(device)
-                [optimizer.zero_grad() for optimizer in optimizers]
+                [opt.zero_grad() for opt in optimizer]
                 
                 pred, y_hats = model(X)
 
@@ -40,7 +39,7 @@ def train(model,
                 loss = 0
                 for i in range(len(losses)):
                     losses[i].backward()
-                    optimizers[i].step()
+                    optimizer[i].step()
 
                     loss += losses[i].item()
 

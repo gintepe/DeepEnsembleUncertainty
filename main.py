@@ -7,14 +7,13 @@ import numpy as np
 
 import datasets.mnist as mnist
 import datasets.cifar10 as cifar10
-from methods.mcdropout import train as mcd_train, evaluate as mcd_eval, models as mcd_models
-from methods.ensemble import train as ens_train, evaluate as ens_eval, models as ens_models
+import methods.mcdropout as mcd
+import  methods.ensemble as ens
 import methods.models
 import methods.general_loops
 import constants
 import metrics
-# from train import train, train_simple_ensemble, basic_cross_entropy
-# from evaluate import test
+
 
 def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, num_workers):
     """
@@ -84,26 +83,22 @@ if __name__ == '__main__':
         criterion = nn.CrossEntropyLoss()
         train = methods.general_loops.train
         test = methods.general_loops.test
-        # train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
 
     if args.method == 'mcdrop':
-        model = mcd_models.LeNet5MCDropout(dropout_p=0.5).to(device)
+        model = mcd.models.LeNet5MCDropout(dropout_p=0.5).to(device)
 
         optimizer = optim.Adam(model.parameters(), lr=args.lr,)
         criterion = nn.CrossEntropyLoss()
-        train = mcd_train.train
-        test = mcd_eval.test
-        # train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
-        # pred_fn = lambda m, x: m.mc_predict(x, args.n)
+        train = mcd.train.train
+        test = mcd.evaluate.test_wrapper(args.n)
 
     if args.method == 'ensemble':
-        model = ens_models.SimpleEnsemble(methods.models.LeNet5, n=args.n).to(device)
+        model = ens.models.SimpleEnsemble(methods.models.LeNet5, n=args.n).to(device)
 
         optimizer = [optim.Adam(m.parameters(), lr=args.lr,) for m in model.networks]
         criterion = nn.CrossEntropyLoss()
-        train = ens_train.train
-        test = ens_eval.test
-        # train_simple_ensemble(model, train_loader, val_loader, criterion, optimizers, args.epochs, device=device)
+        train = ens.train.train
+        test = ens.evaluate.test
 
     train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
 

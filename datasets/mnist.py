@@ -117,7 +117,7 @@ class RotatedMNISTTest(Dataset):
 
     def __getitem__(self, idx):
 
-        img = self.images[idx].reshape((28, 28, 1))
+        img = self.images[idx].reshape((28, 28, 1)).copy()
 
         normalize = transforms.Normalize(constants.MNIST_MEAN, constants.MNIST_STD)
 
