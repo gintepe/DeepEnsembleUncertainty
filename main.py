@@ -8,12 +8,47 @@ import numpy as np
 import datasets.mnist as mnist
 import datasets.cifar10 as cifar10
 import methods.mcdropout as mcd
-import  methods.ensemble as ens
+import methods.ensemble as ens
 import methods.models
 import methods.general_loops
 import constants
 import metrics
 
+from methods.SingleNetwork import SingleNetwork
+from methods.mcdropout.MCDropout import MCDropout
+from methods.ensemble.Ensemble import Ensemble, NCEnsemble
+
+def get_trainer(args, device):
+    if args.method == 'single':
+        trainer = SingleNetwork(args, device)
+
+    if args.method == 'mcdrop':
+        trainer = MCDropout(args, device)
+
+    if args.method == 'ensemble':
+        trainer = Ensemble(args, device)
+
+    if args.method == 'ncensemble':
+        trainer = NCEnsemble(args, device)
+
+    return trainer
+
+def test_mnist(trainer, args, metric_dict):
+    if args.corrupted_test:
+        for i in np.arange(0, 181, 15):
+            print(f'\nShift: {i}\n')
+
+            test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensity=i)
+
+            acc, metric_res = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+
+            wandb.log({'MNIST shifted accuracy': acc, 'shift': i})
+            for name, val in metric_res.items():
+                wandb.log({f'MNIST shifted {name}': val, 'shift': i})
+    else:
+        test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=False)
+        acc, metric_res = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+        print(f'Testing\nAccuracy: {acc}')
 
 def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, num_workers):
     """
@@ -30,13 +65,29 @@ def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, 
                                                         num_workers=num_workers)
 
 parser = argparse.ArgumentParser(description='Train a configurable ensemble on a given dataset.')
+
+# data config
+parser.add_argument('--data-dir', type=str, default='/scratch/gp491/data',
+                    help='Directory the relevant datasets can be found in')
 parser.add_argument('--dataset-type', type=str, default='mnist',
                     choices=['cifar10', 'mnist'], help='Dataset name')
-parser.add_argument('--num-workers', type=int, default=0,
-                    help='Number of CPU cores to load data on')
+parser.add_argument('--corrupted-test', action='store_true',
+                    help='Whether to use a corrupted (shifted) testing set. If omitted, will use the standar one.')
+parser.add_argument('--validation-fraction', type=float, default=0.1,
+                    help='Fraction of the training set to be held out for validation, in cases where a dedicated set is unavailable.')
+
+# method config
 parser.add_argument('--method', type=str, default='single',
-                    choices=['single', 'ensemble', 'mcdrop'],
+                    choices=['single', 'ensemble', 'mcdrop', 'ncensemble'],
                     help='method to run')
+parser.add_argument('--n', type=int, default=5,
+                    help='Size of the ensemble to be trained.')
+parser.add_argument('--model', type=str, default='lenet',
+                    choices=['lenet', 'mlp', 'resnet'])
+parser.add_argument('--reg-weight', type=float, default=0.5,
+                    help='Scaling factor for custom loss regularisation, initial value.')
+
+# training config
 parser.add_argument('--batch-size', type=int, default=250,
                     help='Batch size to use in training')
 parser.add_argument('--epochs', type=int, default=15,
@@ -45,16 +96,8 @@ parser.add_argument('--lr', type=float, default=3e-3,
                     help='Initial learning rate')
 parser.add_argument('--cpu', action='store_true',
                     help='Whether to train on the CPU. If ommited, will train on a GPU')
-parser.add_argument('--model', type=str, default='lenet',
-                    choices=['lenet'])
-parser.add_argument('--corrupted-test', action='store_true',
-                    help='Whether to use a corrupted (shifted) testing set. If omitted, will use the standar one.')
-parser.add_argument('--n', type=int, default=5,
-                    help='Size of the ensemble to be trained.')
-parser.add_argument('--validation-fraction', type=float, default=0.1,
-                    help='Fraction of the training set to be held out for validation, in cases where a dedicated set is unavailable.')
-parser.add_argument('--data-dir', type=str, default='/scratch/gp491/data',
-                    help='Directory the relevant datasets can be found in')
+parser.add_argument('--num-workers', type=int, default=0,
+                    help='Number of CPU cores to load data on')
 
 args = parser.parse_args()
 
@@ -62,7 +105,6 @@ if __name__ == '__main__':
 
     wandb.init(project=f'mphil-{args.dataset_type}', entity='gintepe', dir=constants.LOGGING_DIR)
     wandb.config.update(args)
-    
 
     device = 'cuda' if (torch.cuda.is_available() and not args.cpu) else 'cpu'
 
@@ -73,45 +115,15 @@ if __name__ == '__main__':
                                 val_fraction=args.validation_fraction,
                                 num_workers=args.num_workers,
                                 )
+
+    trainer = get_trainer(args, device)
+    trainer.train(train_loader, val_loader, epochs=args.epochs)
     
-    pred_fn = lambda m, x: m(x)
+    metric_dict = {'NLL': lambda p, g: metrics.basic_cross_entropy(p, g).item(), 
+                    'ECE': metrics.wrap_ece(bins=20), 
+                    'Brier': metrics.wrap_brier()}
 
-    if args.method == 'single':
-        model = methods.models.LeNet5().to(device)
+    test_mnist(trainer, args, metric_dict)
 
-        optimizer = optim.Adam(model.parameters(), lr=args.lr,)
-        criterion = nn.CrossEntropyLoss()
-        train = methods.general_loops.train
-        test = methods.general_loops.test
 
-    if args.method == 'mcdrop':
-        model = mcd.models.LeNet5MCDropout(dropout_p=0.5).to(device)
 
-        optimizer = optim.Adam(model.parameters(), lr=args.lr,)
-        criterion = nn.CrossEntropyLoss()
-        train = mcd.train.train
-        test = mcd.evaluate.test_wrapper(args.n)
-
-    if args.method == 'ensemble':
-        model = ens.models.SimpleEnsemble(methods.models.LeNet5, n=args.n).to(device)
-
-        optimizer = [optim.Adam(m.parameters(), lr=args.lr,) for m in model.networks]
-        criterion = nn.CrossEntropyLoss()
-        train = ens.train.train
-        test = ens.evaluate.test
-
-    train(model, train_loader, val_loader, criterion, optimizer, args.epochs, device=device)
-
-    for i in np.arange(0, 31, 15):
-        print(f'\nShift: {i}\n')
-
-        test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=args.corrupted_test, intensity=i)
-        metric_dict = {'NLL': lambda p, g: metrics.basic_cross_entropy(p, g).item(), 
-                        'ECE': metrics.wrap_ece(bins=20), 
-                        'Brier': metrics.wrap_brier()}
-        acc, metric_res = test(model, test_loader=test_loader, metric_dict=metric_dict, 
-                                device=device)
-
-        wandb.log({'MNIST shifted accuracy': acc, 'shift': i})
-        for name, val in metric_res.items():
-            wandb.log({f'MNIST shifted {name}': val, 'shift': i})

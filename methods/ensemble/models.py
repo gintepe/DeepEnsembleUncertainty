@@ -15,8 +15,11 @@ class SimpleEnsemble(nn.Module):
         self.n = len(self.networks)
 
     def forward(self, x):
+        """
+        Returns individual network predictions as stacked logits (dimension 0 corersponds to the network id)
+        """
         preds = [net(x) for net in self.networks]
-        
-        # output actual mean of probabilities
+
+        torch.mean(nn.functional.softmax(torch.stack(preds.copy(), dim=0), dim=-1), dim=0)
         combined_pred = torch.mean(nn.functional.softmax(torch.stack(preds.copy(), dim=0), dim=-1), dim=0)
         return combined_pred, preds
