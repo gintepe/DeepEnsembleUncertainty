@@ -62,7 +62,8 @@ def get_test_loader(data_dir,
                     num_workers=4,
                     pin_memory=False,
                     corrupted=False,
-                    intensity=10,):
+                    intensity=10,
+                    corruption='rotation'):
     """
     Utility function for loading and returning a multi-process
     test iterator over the MNIST dataset.
@@ -90,7 +91,10 @@ def get_test_loader(data_dir,
     ])
 
     if corrupted:
-        dataset = RotatedMNISTTest(f'{data_dir}/MNIST/raw', intensity, transform=transform)
+        if corruption == 'rotation':
+            dataset = RotatedMNISTTest(f'{data_dir}/MNIST/raw', intensity, transform=transform)
+        else:
+            dataset = TranslatedMNISTTest(f'{data_dir}/MNIST/raw', intensity, transform=transform)
     else:
         dataset = datasets.MNIST(
             root=data_dir, train=False,
@@ -119,14 +123,39 @@ class RotatedMNISTTest(Dataset):
 
         img = self.images[idx].reshape((28, 28, 1)).copy()
 
-        normalize = transforms.Normalize(constants.MNIST_MEAN, constants.MNIST_STD)
-
         if self.transform:
             img = self.transform(img)
 
         img = TF.rotate(img, float(random.choice([-1, 1])*self.rotation))
         
         return img, int(self.labels[idx])
+
+class TranslatedMNISTTest(Dataset):
+
+    def __init__(self, data_dir, translation, transform=None):
+        self.images, self.labels = data_util.load_mnist(data_dir, 't10k')
+        self.transform=transform
+        self.translation=translation
+
+    def __len__(self):
+        return(self.images.shape[0])
+
+    def __getitem__(self, idx):
+
+        img = self.images[idx].reshape((28, 28, 1)).copy()
+        
+        if self.translation > 0:
+            translated_img = np.zeros_like(img)
+            translated_img[:-1*self.translation, :, :] = img[self.translation:, :, :]
+            translated_img[-1*self.translation:, :, :] = img[:self.translation, :, :]
+        else:
+            translated_img = img
+
+        if self.transform:
+            translated_img = self.transform(translated_img)
+
+        
+        return translated_img, int(self.labels[idx])
 
 
 def get_MNIST_loaders(data_dir, 

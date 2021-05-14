@@ -15,6 +15,7 @@ class BaseTrainer():
         self.criterion = criterion
         # every child class should set this
         self.optimizer = None
+        self.scheduler = None
 
     @abstractmethod
     def get_model(self, args):
@@ -33,6 +34,9 @@ class BaseTrainer():
         """
         raise NotImplementedError("Abstract method without implementation provided")
 
+    # TODO: find a nicer way to incorporate schedulers
+    def use_scheduler(self):
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 20, gamma = 0.1)
     
     def get_model_class(self, args):
         if args.model == 'lenet':
@@ -45,9 +49,9 @@ class BaseTrainer():
             raise ValueError('invalid network type')
 
     def log_info(self, train_acc, val_loss, val_acc, batches, epoch):
-        wandb.log({'Training accuracy': train_acc, 'batch': batches, 'epoch': epoch})
-        wandb.log({'Validation loss': val_loss, 'batch': batches, 'epoch': epoch})
-        wandb.log({'Validation accuracy': val_acc, 'batch': batches, 'epoch': epoch})
+        wandb.log({'Training/accuracy': train_acc, 'batch': batches, 'epoch': epoch})
+        wandb.log({'Validation/loss': val_loss, 'batch': batches, 'epoch': epoch})
+        wandb.log({'Validation/accuracy': val_acc, 'batch': batches, 'epoch': epoch})
 
     def validate(self, val_loader, val_criterion):    
         
@@ -120,12 +124,15 @@ class BaseTrainer():
                     total += X.shape[0]
 
                     if log:
-                        wandb.log({'Training loss': loss, 'batch': batches})
+                        wandb.log({'Training/loss': loss, 'batch': batches})
 
             val_loss, val_acc = self.validate(val_loader, val_criterion=self.criterion)
 
             if log:
                 self.log_info(correct/total, val_loss, val_acc, batches, epoch)
+
+            if self.scheduler is not None:
+                self.scheduler.step()
 
     def test(self, test_loader, metric_dict):    
         

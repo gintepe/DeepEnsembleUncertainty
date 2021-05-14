@@ -1,7 +1,8 @@
 import torch 
 import torch.nn as nn
+import torch.nn.functional as F
 
-from methods.models import *
+from methods.models import _weights_init, LambdaLayer
 
 # Identical behavior to dropout, but always applied
 class MCDropout(nn.Module):
@@ -128,7 +129,7 @@ class ResNetMCDropout(nn.Module):
     Can be customised, but will default to ResNet20
     """
     def __init__(self, dropout_p, num_blocks=3, num_classes=10):
-        super(ResNet, self).__init__()
+        super(ResNetMCDropout, self).__init__()
 
         self.in_channels=16
         self.num_blocks = num_blocks
@@ -152,7 +153,7 @@ class ResNetMCDropout(nn.Module):
         strides = [stride] + [1]*(self.num_blocks-1)
         layers = []
         for stride in strides:
-            layers.append(ResidualBlock(self.dropout_p, self.in_channels, out_channels, stride))
+            layers.append(ResidualBlockMCDropout(self.dropout_p, self.in_channels, out_channels, stride))
             self.in_channels = out_channels
 
         return nn.Sequential(*layers)

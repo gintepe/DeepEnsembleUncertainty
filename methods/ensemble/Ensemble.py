@@ -16,6 +16,8 @@ class Ensemble(BaseTrainer):
         self.n = args.n
         super().__init__(args, criterion, device)
         self.optimizer = [optim.Adam(m.parameters(), lr=args.lr,) for m in self.model.networks]
+        if args.scheduled_lr:
+            self.use_scheduler()
 
     def get_model(self, args):
         model_class = self.get_model_class(args)
@@ -26,6 +28,12 @@ class Ensemble(BaseTrainer):
     
     def predict_test(self, x):
         return self.model(x)[0]
+
+    def use_scheduler(self):
+        schedulers = []
+        for i in range(self.n):
+            schedulers.append(optim.lr_scheduler.StepLR(self.optimizer[i], 20, gamma = 0.1))
+        self.scheduler = schedulers
 
     def train(self,
          train_loader,
@@ -71,12 +79,16 @@ class Ensemble(BaseTrainer):
                     total += X.shape[0]
 
                     if log:
-                        wandb.log({'(Ensemble) Mean Training loss': loss/len(losses), 'batch': batches})
+                        wandb.log({'Training/loss': loss/len(losses), 'batch': batches})
 
             val_loss, val_acc = self.validate(val_loader, val_criterion=basic_cross_entropy)
 
             if log:
                 self.log_info(correct/total, val_loss, val_acc, batches, epoch)
+
+            if self.scheduler is not None:
+                for schd in self.scheduler:
+                    schd.step()
 
 
 class NCEnsemble(BaseTrainer):
@@ -87,6 +99,8 @@ class NCEnsemble(BaseTrainer):
         self.l = args.reg_weight
         super().__init__(args, criterion, device)
         self.optimizer = [optim.Adam(m.parameters(), lr=args.lr,) for m in self.model.networks]
+        if args.scheduled_lr:
+            self.use_scheduler()
 
     def get_model(self, args):
         model_class = self.get_model_class(args)
@@ -97,6 +111,12 @@ class NCEnsemble(BaseTrainer):
     
     def predict_test(self, x):
         return self.model(x)[0]
+
+    def use_scheduler(self):
+        schedulers = []
+        for i in range(self.n):
+            schedulers.append(optim.lr_scheduler.StepLR(self.optimizer[i], 20, gamma = 0.1))
+            self.scheduler = schedulers
 
     def train(self,
          train_loader,
@@ -142,9 +162,13 @@ class NCEnsemble(BaseTrainer):
                     total += X.shape[0]
 
                     if log:
-                        wandb.log({'(Ensemble) Mean Training loss': loss/len(losses), 'batch': batches})
+                        wandb.log({'Training/loss': loss/len(losses), 'batch': batches})
 
             val_loss, val_acc = self.validate(val_loader, val_criterion=basic_cross_entropy)
+
+            if self.scheduler is not None:
+                for schd in self.scheduler:
+                    schd.step()
 
             if log:
                 self.log_info(correct/total, val_loss, val_acc, batches, epoch)

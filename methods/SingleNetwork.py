@@ -10,6 +10,8 @@ class SingleNetwork(BaseTrainer):
         criterion = nn.CrossEntropyLoss()
         super().__init__(args, criterion, device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr,)
+        if args.scheduled_lr:
+            self.use_scheduler()
 
     def get_model(self, args):
         model_class = self.get_model_class(args)

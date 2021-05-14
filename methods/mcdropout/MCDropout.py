@@ -11,10 +11,12 @@ class MCDropout(BaseTrainer):
         super().__init__(args, criterion, device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr,)
         self.n = args.n
+        if args.scheduled_lr:
+            self.use_scheduler()
 
     def get_model(self, args):
         model_class = self.get_model_class(args)
-        return model_class(dropout_p=0.5)
+        return model_class(dropout_p=args.dropout)
 
     def get_model_class(self, args):
         if args.model == 'lenet':
@@ -27,7 +29,8 @@ class MCDropout(BaseTrainer):
             raise ValueError('invalid network type')
 
     def predict_val(self, x):
-        return self.model(x)
+        # return self.model(x)
+        return self.model.mc_predict(x, self.n)[0]
 
     def predict_test(self, x):
         return self.model.mc_predict(x, self.n)[0]
