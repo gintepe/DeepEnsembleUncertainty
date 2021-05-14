@@ -13,3 +13,4 @@ MNIST_MEAN = (0.1307,)
 MNIST_STD = (0.3081,)
 
 LOGGING_DIR = '/scratch/gp491/wandb'
+CHECKPOINT_DIR = f'{LOGGING_DIR}/checkpoints'

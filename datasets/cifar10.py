@@ -204,7 +204,7 @@ def get_test_loader(data_dir,
 class CorruptedCifar10Test(Dataset):
 
     def __init__(self, data_dir, corruptions=constants.CORRUPTIONS, intensities=range(1,6), transform=None):
-        load_corrupted_cifar(data_dir, corruptions, intensities)
+        self.load_corrupted_cifar(data_dir, corruptions, intensities)
         self.transform=transform
     
     def __len__(self):
@@ -229,7 +229,7 @@ class CorruptedCifar10Test(Dataset):
             for intensity in intensities:
                 sets.append(imgs[(intensity-1)*constants.CIFAR10_TEST_N : (intensity)*constants.CIFAR10_TEST_N])
 
-        self.corrupted_images = np.permute(np.concatenate(sets, axis=0), (0, 3, 1, 2))
+        self.corrupted_images = np.concatenate(sets, axis=0)
 
 
 def get_CIFAR10_loaders(data_dir, 

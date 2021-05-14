@@ -41,6 +41,8 @@ class Ensemble(BaseTrainer):
          epochs,
          log=True,):
 
+        self.model.to(self.device)
+
         batches = 0
         
         if log:
@@ -89,6 +91,9 @@ class Ensemble(BaseTrainer):
             if self.scheduler is not None:
                 for schd in self.scheduler:
                     schd.step()
+        
+        if self.checkpoint_dir is not None:
+            self.save_checkpoint(epoch, val_loss)
 
 
 class NCEnsemble(BaseTrainer):
@@ -123,6 +128,8 @@ class NCEnsemble(BaseTrainer):
          val_loader,
          epochs,
          log=True,):
+
+        self.model.to(self.device)
 
         batches = 0
         
@@ -172,6 +179,9 @@ class NCEnsemble(BaseTrainer):
 
             if log:
                 self.log_info(correct/total, val_loss, val_acc, batches, epoch)
+
+        if self.checkpoint_dir is not None:
+            self.save_checkpoint(epoch, val_loss)
 
 def nc_joint_regularised_cross_entropy(mean_probs, pred_logits, ground_truth, l):
     prob_predictions = nn.functional.softmax(torch.stack(pred_logits.copy(), dim=1).detach(), dim=-1)
