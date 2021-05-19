@@ -31,24 +31,27 @@ def get_train_valid_loader(data_dir,
     Utility function for loading and returning train and validation
     multi-process iterators over a trochvision image dataset.
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
-    Params
+    
+    Parameters
     ------
-    - data_dir: path directory to the dataset.
-    - batch_size: how many samples per batch to load.
-    - random_seed: fix seed for reproducibility.
-    - valid_transform: transformations to apply to the validation set
-    - train_transform: transformations to apply to the training set
-    - valid_size: percentage split of the training set used for
-      the validation set. Should be a float in the range [0, 1].
-    - shuffle: whether to shuffle the train/validation indices.
-    - num_workers: number of subprocesses to use when loading the dataset.
-    - pin_memory: whether to copy tensors into CUDA pinned memory. Set it to
+    - data_dir (str): path directory to the dataset.
+    - batch_size (int): how many samples per batch to load.
+    - random_seed (int): fix seed for reproducibility.
+    - valid_transform (torchvision.transform): transformations to apply to the validation set
+    - train_transform (torchvision.transform): transformations to apply to the training set
+    - valid_size (float): fraction of the training set used for the validation set. 
+    Should be in the range [0, 1].
+    - shuffle (bool): whether to shuffle the train/validation indices.
+    - num_workers (int): number of subprocesses to use when loading the dataset.
+    - pin_memory (bool): whether to copy tensors into CUDA pinned memory. Set it to
       True if using GPU.
+    
     Returns
     -------
     - train_loader: training set iterator.
     - valid_loader: validation set iterator.
     """
+
     error_msg = "[!] valid_size should be in the range [0, 1]."
     assert ((valid_size >= 0) and (valid_size <= 1)), error_msg
 
@@ -86,9 +89,24 @@ def get_train_valid_loader(data_dir,
 
     return (train_loader, valid_loader)
 
+
 def load_mnist(path, kind='train'):
 
-    """Load MNIST data from `path`"""
+    """
+    Load MNIST data form raw files
+
+    Parameters
+    ------
+    - path (str): path to the MNIST data folder
+    - kind (str): type of data to load. train for training, 
+    t10k for testing
+
+    Resturns
+    ------
+    - imgaes (np.ndarray): Array of flattened image data, 
+    n_images x pixels
+    - labels (np.ndarray): Array of integer labels 
+    """
 
     labels_path = os.path.join(path,
                                '%s-labels-idx1-ubyte.gz'

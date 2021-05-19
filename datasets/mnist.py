@@ -23,17 +23,21 @@ def get_mnist_train_valid_loader(data_dir,
     Utility function for loading and returning train and valid
     multi-process iterators over the MNIST dataset.
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
-    Params
+    
+    Parameters
     ------
-    - data_dir: path directory to the dataset.
-    - batch_size: how many samples per batch to load.
-    - random_seed: fix seed for reproducibility.
-    - valid_size: percentage split of the training set used for
-      the validation set. Should be a float in the range [0, 1].
-    - shuffle: whether to shuffle the train/validation indices.
-    - num_workers: number of subprocesses to use when loading the dataset.
-    - pin_memory: whether to copy tensors into CUDA pinned memory. Set it to
-      True if using GPU.
+    - data_dir (str): path directory to the dataset.
+    - batch_size (int): how many samples per batch to load.
+    - augment (bool): whether to apply the data augmentation scheme
+      mentioned in the paper. Only applied on the train split.
+    - random_seed (int): fix seed for reproducibility.
+    - valid_size (float): fraction of the training set used for
+      the validation set. Should be in the range [0, 1].
+    - shuffle (bool): whether to shuffle the train/validation indices.
+    - num_workers (int): number of subprocesses to use when loading the dataset.
+    - pin_memory (bool): whether to copy tensors into CUDA pinned memory. Set it to
+      True if using GPU
+
     Returns
     -------
     - train_loader: training set iterator.
@@ -68,16 +72,19 @@ def get_test_loader(data_dir,
     Utility function for loading and returning a multi-process
     test iterator over the MNIST dataset.
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
-    Params
+    
+    Parameters
     ------
-    - data_dir: path directory to the dataset.
-    - batch_size: how many samples per batch to load.
-    - shuffle: whether to shuffle the dataset after every epoch.
-    - num_workers: number of subprocesses to use when loading the dataset.
-    - pin_memory: whether to copy tensors into CUDA pinned memory. Set it to
+    - data_dir (str): path directory to the dataset.
+    - batch_size (int): how many samples per batch to load.
+    - shuffle (bool): whether to shuffle the dataset after every epoch.
+    - num_workers (int): number of subprocesses to use when loading the dataset.
+    - pin_memory (bool): whether to copy tensors into CUDA pinned memory. Set it to
       True if using GPU.
-    - corrupted: wether to return original test images or rotate them.
-    - intensity: rotation angle.
+    - corrupted (bool): whether to return original test images or rotate them.
+    - intensity (int): rotation angle in degrees or shift in pixels.
+    - corruption (str): type of corruption, rotation or translation
+    
     Returns
     -------
     - data_loader: test set iterator.
@@ -110,8 +117,19 @@ def get_test_loader(data_dir,
 
 
 class RotatedMNISTTest(Dataset):
+    """Class to wrap the MNIST test set with applied rotations"""
 
     def __init__(self, data_dir, rotation, transform=None):
+        """
+        Initialise the dataset and load data
+
+        Parameters
+        ------
+        - data_dir (str): path to the dataset directory.
+        - rotation (int): rotation angle in degrees.
+        - transform (torchvision.transform): transformation 
+        to apply to images prior to rotation.
+        """
         self.images, self.labels = data_util.load_mnist(data_dir, 't10k')
         self.transform=transform
         self.rotation=rotation
@@ -130,9 +148,21 @@ class RotatedMNISTTest(Dataset):
         
         return img, int(self.labels[idx])
 
+
 class TranslatedMNISTTest(Dataset):
+    """Class to wrap the MNIST test set with applied cyclic translation"""
 
     def __init__(self, data_dir, translation, transform=None):
+        """
+        Initialise the dataset and load data
+
+        Parameters
+        ------
+        - data_dir (str): path to the dataset directory.
+        - translation (int): translation shift in pixels.
+        - transform (torchvision.transform): transformation 
+        to apply to images prior to translaiton.
+        """
         self.images, self.labels = data_util.load_mnist(data_dir, 't10k')
         self.transform=transform
         self.translation=translation
@@ -165,11 +195,37 @@ def get_MNIST_loaders(data_dir,
                         shuffle=True,
                         num_workers=4,
                         pin_memory=False,
-                        corrupted_test=False,):
+                        corrupted_test=False,
+                        intensity=10,
+                        corruption='rotation'):
+
+    """
+    Utility function for loading and returning training, validation and testing
+    multi-process iterators over the MNIST dataset.
+    If using CUDA, num_workers should be set to 1 and pin_memory to True.
+    
+    Parameters
+    ------
+    - data_dir (str): path directory to the dataset.
+    - batch_size (int): how many samples per batch to load.
+    - shuffle (bool): whether to shuffle the dataset after every epoch.
+    - num_workers (int): number of subprocesses to use when loading the dataset.
+    - pin_memory (bool): whether to copy tensors into CUDA pinned memory. Set it to
+      True if using GPU.
+    - corrupted_test (bool): whether to return original test images or rotate them.
+    - intensity (int): rotation angle in degrees or shift in pixels.
+    - corruption (str): type of corruption, rotation or translation
+    
+    Returns
+    -------
+    - train_loader: training set iterator.
+    - valid_loader: validation set iterator.
+    - test_loader: test set iterator.
+    """
     
     train_loader, valid_loader = get_mnist_train_valid_loader(data_dir, batch_size,
                                     random_seed, valid_size, shuffle, num_workers, pin_memory)
     test_loader = get_test_loader(data_dir, batch_size, shuffle, num_workers, pin_memory,
-                                    corrupted_test,)
+                                    corrupted_test, intensity, corruption)
 
     return train_loader, valid_loader, test_loader
