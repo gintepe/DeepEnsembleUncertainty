@@ -36,7 +36,7 @@ if __name__ == '__main__':
         trainer.checkpoint_dir = log_dir
         args.to_json(log_dir)
 
-    trainer.train(train_loader, val_loader, epochs=args.epochs)
+    trainer.fit(train_loader, val_loader, epochs=args.epochs)
 
     
     metric_dict = {'NLL': lambda p, g: metrics.basic_cross_entropy(p, g).item(), 

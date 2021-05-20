@@ -17,26 +17,36 @@ import scipy
 # * Entropy has standard implementations in scipy
 
 def basic_cross_entropy(probs, gt):
-    nll = torch.nn.NLLLoss()
-    return nll(torch.log(probs), gt)
+  """
+  Implements cross entropy loss, for raw probability values
+  """
+  nll = torch.nn.NLLLoss()
+  return nll(torch.log(probs), gt)
 
 def wrap_ece(bins):
+  """ convenience wrapper for the ECE computation when bins are fixed """
   return lambda prob, gt: expected_calibration_error_multiclass(
                                                 prob.cpu().numpy(), 
                                                 gt.cpu().numpy(), 
                                                 bins)
 
 def wrap_brier():
+  """ convenience wrapper for the Brier score computation when bins are fixed """
   return lambda prob, gt: np.mean(brier_scores(gt.cpu().numpy(), prob.cpu().numpy()))
 
 def bin_predictions_and_accuracies(probabilities, ground_truth, bins=10):
-  """A helper function which histograms a vector of probabilities into bins.
-  Args:
+  """
+  A helper function which histograms a vector of probabilities into bins.
+  
+  Parameters
+  -----
     probabilities: A numpy vector of N probabilities assigned to each prediction
     ground_truth: A numpy vector of N ground truth labels in {0,1}
     bins: Number of equal width bins to bin predictions into in [0, 1], or an
       array representing bin edges.
-  Returns:
+  
+  Returns
+  -----
     bin_edges: Numpy vector of floats containing the edges of the bins
       (including leftmost and rightmost).
     accuracies: Numpy vector of floats for the average accuracy of the
@@ -76,13 +86,18 @@ def bin_centers_of_mass(probabilities, bin_edges):
 
 
 def expected_calibration_error(probabilities, ground_truth, bins=15):
-  """Compute the expected calibration error of a set of preditions in [0, 1].
-  Args:
+  """
+  Compute the expected calibration error of a set of preditions in [0, 1].
+  
+  Parameters
+  -----
     probabilities: A numpy vector of N probabilities assigned to each prediction
     ground_truth: A numpy vector of N ground truth labels in {0,1, True, False}
     bins: Number of equal width bins to bin predictions into in [0, 1], or
       an array representing bin edges.
-  Returns:
+  
+  Returns
+  -----
     Float: the expected calibration error.
   """
 
@@ -100,14 +115,19 @@ def expected_calibration_error(probabilities, ground_truth, bins=15):
 
 
 def accuracy_top_k(probabilities, labels, top_k):
-  """Computes the top-k accuracy of predictions.
+  """
+  Computes the top-k accuracy of predictions.
   A prediction is considered correct if the ground-truth class is among the k
   classes with the highest predicted probabilities.
-  Args:
+  
+  Parameters
+  -----
     probabilities: Array of probabilities of shape [num_samples, num_classes].
     labels: Integer array labels of shape [num_samples].
     top_k: Integer. Number of highest-probability classes to consider.
-  Returns:
+  
+  Returns
+  -----
     float: Top-k accuracy of predictions.
   """
   _, ground_truth = _filter_top_k(probabilities, labels, top_k)
@@ -153,9 +173,12 @@ def get_multiclass_predictions_and_correctness(probabilities, labels, top_k=1):
 
 def expected_calibration_error_multiclass(probabilities, labels, bins=15,
                                           top_k=1):
-  """Computes expected calibration error from Guo et al. 2017.
+  """
+  Computes expected calibration error from Guo et al. 2017.
   For details, see https://arxiv.org/abs/1706.04599.
-  Args:
+  
+  Parameters
+  -----
     probabilities: Array of probabilities of shape [num_samples, num_classes].
     labels: Integer array labels of shape [num_samples].
     bins: Number of equal width bins to bin predictions into in [0, 1], or
@@ -163,7 +186,9 @@ def expected_calibration_error_multiclass(probabilities, labels, bins=15,
     top_k: Integer or None. If integer, use the top k predicted
       probabilities in ECE calculation (can be informative for problems with
       many classes and lower top-1 accuracy). If None, use all classes.
-  Returns:
+  
+  Returns
+  -----
     float: Expected calibration error.
   """
   top_k_probs, is_correct = get_multiclass_predictions_and_correctness(
@@ -174,12 +199,17 @@ def expected_calibration_error_multiclass(probabilities, labels, bins=15,
 
 
 def compute_accuracies_at_confidences(labels, probs, thresholds):
-  """Compute accuracy of samples above each confidence threshold.
-  Args:
+  """
+  Compute accuracy of samples above each confidence threshold.
+  
+  Parameters
+  -----
     labels: Array of integer categorical labels.
     probs: Array of categorical probabilities.
     thresholds: Array of floating point probability thresholds in [0, 1).
-  Returns:
+  
+  Returns
+  -----
     accuracies: Array of accuracies over examples with confidence > T for each T
         in thresholds.
     counts: Count of examples with confidence > T for each T in thresholds.
@@ -202,13 +232,18 @@ def compute_accuracies_at_confidences(labels, probs, thresholds):
 
 
 def brier_scores(labels, probs=None, logits=None):
-  """Compute elementwise Brier score.
-  Args:
+  """
+  Compute elementwise Brier score.
+  
+  Parameters
+  -----
     labels: Tensor of integer labels shape [N1, N2, ...]
     probs: Tensor of categorical probabilities of shape [N1, N2, ..., M].
     logits: If `probs` is None, class probabilities are computed as a softmax
       over these logits, otherwise, this argument is ignored.
-  Returns:
+  
+  Returns
+  -----
     Tensor of shape [N1, N2, ...] consisting of Brier score contribution from
     each element. The full-dataset Brier score is an average of these values.
   """
@@ -227,12 +262,17 @@ def brier_scores(labels, probs=None, logits=None):
 
 
 def get_quantile_bins(num_bins, probs, top_k=1):
-  """Find quantile bin edges.
-  Args:
+  """
+  Find quantile bin edges.
+  
+  Parameters
+  -----
     num_bins: int, number of bins desired.
     probs: Categorical probabilities of shape [num_samples, num_classes].
     top_k: int, number of highest-predicted classes to consider in binning.
-  Returns:
+  
+  Returns
+  -----
     Numpy vector, quantile bin edges.
   """
   edge_percentiles = np.linspace(0, 100, num_bins+1)

@@ -10,180 +10,279 @@ import torch.nn as nn
 import torch.optim as optim
 
 class Ensemble(BaseTrainer):
+    """ Class for training simple deep ensembles. """
+
     def __init__(self, args, device):
+        """
+        Initialise the trainer and network.
+        
+        Parameters
+        --------
+        - args (namespace): parsed command line arguments.
+        - device (torch.device or str): device to perform calculations on.
+        """
+
         print(f'Initialising an ensemble of {args.n} networks')
         criterion = nn.CrossEntropyLoss()
         self.n = args.n
         super().__init__(args, criterion, device)
-        self.optimizer = [optim.Adam(m.parameters(), lr=args.lr,) for m in self.model.networks]
-        if args.scheduled_lr:
-            self.use_scheduler()
+        self.val_criterion = basic_cross_entropy
+
+    def get_optimizer(self, args):
+        if args.optimizer == 'adam':
+            return [optim.Adam(m.parameters(), lr=args.lr,) for m in self.model.networks]
+        else:
+            print('SGD optimizer')
+            return list([optim.SGD(m.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9) for m in self.model.networks])
 
     def get_model(self, args):
+        """
+        Implements base class's abstract method.
+        Retrieves and intialises a relevant model.
+        """
         model_class = self.get_model_class(args)
         return SimpleEnsemble(model_class, n=self.n)
 
     def predict_val(self, x):
+        """
+        Implements base class's abstract method.
+        Predict for x during a validation step.
+        """
         return self.model(x)[0]
     
     def predict_test(self, x):
+        """
+        Implements base class's abstract method.
+        Predict for x during a testing step.
+        """
         return self.model(x)[0]
 
-    def use_scheduler(self):
+    def get_schedulers(self, args):
+        """
+        Overrides the base class's implementation to retrieve
+        a list of schedulers rather than a single one.
+        """
+        if args.scheduler is None:
+            return []
         schedulers = []
         for i in range(self.n):
-            schedulers.append(optim.lr_scheduler.StepLR(self.optimizer[i], 20, gamma = 0.1))
-        self.scheduler = schedulers
+            if args.scheduler == 'step':
+                sched = optim.lr_scheduler.StepLR(self.optimizer[i], args.scheduler_step, gamma = args.scheduler_rate)
+            elif args.scheduler == 'exp':
+                sched = optim.lr_scheduler.ExponentialLR(self.optimizer[i], args.scheduler_rate) 
+            else:
+                sched = torch.optim.lr_scheduler.MultiStepLR(self.optimizer[i], milestones=[90, 135], gamma=args.scheduler_rate)
+            schedulers.append(sched)
+        return schedulers
 
     def train(self,
          train_loader,
-         val_loader,
-         epochs,
+         batches,
          log=True,):
+        """
+        Overrides the base class's implementation to provide an ensemble-specific training step.
 
-        self.model.to(self.device)
+        Parameters
+        -------
+        - train_loader (torch.utils.data.DataLoader): iterator for the training data.
+        - batches (int): number of batches seen so far.
+        - log (bool): whether to use the weights and biases logger.
 
-        batches = 0
+        Returns
+        -------
+        - correct (int): number of correct predictions observed.
+        - total (int): number of datapoints observed.
+        - batches (int): updated count of batches observed.
+        """
+
+        self.model.train()
+
+        correct = 0
+        total = 0
+
+        with tqdm(train_loader, unit="batch") as tepoch:
+            for X, y in tepoch:
+                
+                X, y = X.to(self.device), y.to(self.device)
+                
+                pred, y_hats = self.model(X)
+
+                losses = [self.criterion(y_hat, y) for y_hat in y_hats]
+
+                loss = 0
+                for i in range(len(losses)):
+                    self.optimizer[i].zero_grad()
+                    losses[i].backward()
+                    self.optimizer[i].step()
+
+                    loss += losses[i].item()
+
+                tepoch.set_postfix(loss=loss/len(losses))
+
+                batches += 1
+
+                _, predicted = torch.max(pred, 1)
+                correct += (predicted == y).sum().item()
+                total += X.shape[0]
+
+                if log:
+                    wandb.log({'Training/loss': loss/len(losses), 'batch': batches})
         
-        if log:
-            wandb.watch(self.model)
-        
-        for epoch in range(1, epochs + 1):
-            self.model.train()
-
-            print(f'Epoch {epoch}')
-            correct = 0
-            total = 0
-
-            with tqdm(train_loader, unit="batch") as tepoch:
-                for X, y in tepoch:
-                    
-                    X, y = X.to(self.device), y.to(self.device)
-                    [opt.zero_grad() for opt in self.optimizer]
-                    
-                    pred, y_hats = self.model(X)
-
-                    losses = [self.criterion(y_hat, y) for y_hat in y_hats]
-
-                    loss = 0
-                    for i in range(len(losses)):
-                        losses[i].backward()
-                        self.optimizer[i].step()
-
-                        loss += losses[i].item()
-
-                    tepoch.set_postfix(loss=loss/len(losses))
-
-                    batches += 1
-
-                    _, predicted = torch.max(pred, 1)
-                    correct += (predicted == y).sum().item()
-                    total += X.shape[0]
-
-                    if log:
-                        wandb.log({'Training/loss': loss/len(losses), 'batch': batches})
-
-            val_loss, val_acc = self.validate(val_loader, val_criterion=basic_cross_entropy)
-
-            if log:
-                self.log_info(correct/total, val_loss, val_acc, batches, epoch)
-
-            if self.scheduler is not None:
-                for schd in self.scheduler:
-                    schd.step()
-        
-        if self.checkpoint_dir is not None:
-            self.save_checkpoint(epoch, val_loss)
+        return correct, total, batches
 
 
 class NCEnsemble(BaseTrainer):
+    """
+    Class for training negative correlation regularised [1] deep ensembles.
+
+    References
+    --------
+    [1] : Shui, Changjian, et al. "Diversity regularization in deep ensembles." 
+          arXiv preprint arXiv:1802.07881 (2018).
+    """
     def __init__(self, args, device):
+        """
+        Initialise the trainer and network.
+        
+        Parameters
+        --------
+        - args (namespace): parsed command line arguments.
+        - device (torch.device or str): device to perform calculations on.
+        """
+
         print(f'Initialising a negative-correlation normalised ensemble of {args.n} networks')
-        criterion = nc_joint_regularised_cross_entropy
+        
         self.n = args.n
         self.l = args.reg_weight
+        self.decay = args.reg_decay
+        
+        criterion = nc_joint_regularised_cross_entropy
         super().__init__(args, criterion, device)
-        self.optimizer = [optim.Adam(m.parameters(), lr=args.lr,) for m in self.model.networks]
-        if args.scheduled_lr:
-            self.use_scheduler()
+        
+        self.val_criterion = basic_cross_entropy
+
+    def get_optimizer(self, args):
+        if args.optimizer == 'adam':
+            return [optim.Adam(m.parameters(), lr=args.lr,) for m in self.model.networks]
+        else:
+            print('SGD optimizer')
+            return list([optim.SGD(m.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9) for m in self.model.networks])
 
     def get_model(self, args):
         model_class = self.get_model_class(args)
         return SimpleEnsemble(model_class, n=self.n)
 
     def predict_val(self, x):
+        """
+        Implements base class's abstract method.
+        Predict for x during a validation step.
+        """
         return self.model(x)[0]
     
     def predict_test(self, x):
+        """
+        Implements base class's abstract method.
+        Predict for x during a testing step.
+        """
         return self.model(x)[0]
 
-    def use_scheduler(self):
+    def get_schedulers(self, args):
+        """
+        Overrides the base class's implementation to retrieve
+        a list of schedulers rather than a single one.
+        """
+        if args.scheduler is None:
+            return []
+        
         schedulers = []
         for i in range(self.n):
-            schedulers.append(optim.lr_scheduler.StepLR(self.optimizer[i], 20, gamma = 0.1))
-            self.scheduler = schedulers
+            if args.scheduler == 'step':
+                sched = optim.lr_scheduler.StepLR(self.optimizer[i], args.scheduler_step, gamma = args.scheduler_rate)
+            elif args.scheduler == 'exp':
+                sched = optim.lr_scheduler.ExponentialLR(self.optimizer[i], args.scheduler_rate) 
+            else:
+                sched = torch.optim.lr_scheduler.MultiStepLR(self.optimizer[i], milestones=[90, 135], gamma=args.scheduler_rate)
+            schedulers.append(sched)
+        return schedulers
 
     def train(self,
          train_loader,
-         val_loader,
-         epochs,
+         batches,
          log=True,):
+        """
+        Overrides the base class's implementation to provide an ensemble-specific training step.
 
-        self.model.to(self.device)
+        Parameters
+        -------
+        - train_loader (torch.utils.data.DataLoader): iterator for the training data.
+        - batches (int): number of batches seen so far.
+        - log (bool): whether to use the weights and biases logger.
 
-        batches = 0
-        
-        if log:
-            wandb.watch(self.model)
-        
-        for epoch in range(1, epochs + 1):
-            self.model.train()
+        Returns
+        -------
+        - correct (int): number of correct predictions observed.
+        - total (int): number of datapoints observed.
+        - batches (int): updated count of batches observed.
+        """
 
-            print(f'Epoch {epoch}')
-            correct = 0
-            total = 0
+        self.model.train()
+        correct = 0
+        total = 0
 
-            with tqdm(train_loader, unit="batch") as tepoch:
-                for X, y in tepoch:
-                    
-                    X, y = X.to(self.device), y.to(self.device)
-                    [opt.zero_grad() for opt in self.optimizer]
-                    
-                    pred, y_hats = self.model(X)
+        with tqdm(train_loader, unit="batch") as tepoch:
+            for X, y in tepoch:
+                
+                X, y = X.to(self.device), y.to(self.device)
+                
+                pred, y_hats = self.model(X)
 
-                    losses = self.criterion(pred.detach(), y_hats, y, self.l)
+                losses = self.criterion(pred.detach(), y_hats, y, self.l)
 
-                    loss = 0
-                    for i in range(len(losses)):
-                        losses[i].backward()
-                        self.optimizer[i].step()
+                loss = 0
+                for i in range(len(losses)):
+                    self.optimizer[i].zero_grad()
+                    losses[i].backward()
+                    self.optimizer[i].step()
 
-                        loss += losses[i].item()
+                    loss += losses[i].item()
 
-                    tepoch.set_postfix(loss=loss/len(losses))
+                tepoch.set_postfix(loss=loss/len(losses))
 
-                    batches += 1
+                batches += 1
 
-                    _, predicted = torch.max(pred, 1)
-                    correct += (predicted == y).sum().item()
-                    total += X.shape[0]
+                _, predicted = torch.max(pred, 1)
+                correct += (predicted == y).sum().item()
+                total += X.shape[0]
 
-                    if log:
-                        wandb.log({'Training/loss': loss/len(losses), 'batch': batches})
+                if log:
+                    wandb.log({'Training/loss': loss/len(losses), 'batch': batches})
 
-            val_loss, val_acc = self.validate(val_loader, val_criterion=basic_cross_entropy)
+        self.l = self.l * self.decay
 
-            if self.scheduler is not None:
-                for schd in self.scheduler:
-                    schd.step()
+        return correct, total, batches
 
-            if log:
-                self.log_info(correct/total, val_loss, val_acc, batches, epoch)
-
-        if self.checkpoint_dir is not None:
-            self.save_checkpoint(epoch, val_loss)
 
 def nc_joint_regularised_cross_entropy(mean_probs, pred_logits, ground_truth, l):
+    """
+    Computes a list of negative correlation regularised (as per [1]) losses.
+
+    Parameters
+    -------
+    - maen_probs (torch.Tensor): the mean of the converted to probabilities predictions.
+    - pred_logits (List[torch.Tensor]): network output for each ensemble member.
+    - ground_truth (torch.Tensor): ground truth labels, regular int encoding.
+    - l (float): regularisation term's scaling factor.
+
+    Returns
+    -------
+    - losses (List[torch.Tensor]): loss values for each network.
+
+    References
+    -------
+    [1] : Shui, Changjian, et al. "Diversity regularization in deep ensembles." 
+          arXiv preprint arXiv:1802.07881 (2018).
+    """
+
     prob_predictions = nn.functional.softmax(torch.stack(pred_logits.copy(), dim=1).detach(), dim=-1)
     sum_factor = (1 - torch.eye(len(pred_logits))).to(mean_probs.device).detach()
     sums = torch.matmul(sum_factor, (prob_predictions - mean_probs.unsqueeze(1)).detach())
@@ -192,7 +291,8 @@ def nc_joint_regularised_cross_entropy(mean_probs, pred_logits, ground_truth, l)
     for i, pred in enumerate(pred_logits):
         cn = torch.nn.functional.cross_entropy(pred, ground_truth)
 
-        reg = torch.mean(torch.sum((prob_predictions[:, i, :] - mean_probs) * sums[:, i, :], dim=-1))
+        reg = torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1) - mean_probs) * sums[:, i, :], dim=-1))
+        # reg = torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1) - mean_probs) * (mean_probs - nn.functional.softmax(pred, dim=-1)), dim=-1))
 
         losses.append(cn + l*reg)
 

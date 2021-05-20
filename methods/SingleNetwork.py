@@ -6,19 +6,38 @@ import torch.optim as optim
 
 
 class SingleNetwork(BaseTrainer):
+    """ Class for training simple traditional network implementations. """
+    
     def __init__(self, args, device):
+        """
+        Initialise the trainer and network.
+        
+        Parameters
+        --------
+        - args (namespace): parsed command line arguments.
+        - device (torch.device or str): device to perform calculations on.
+        """
         criterion = nn.CrossEntropyLoss()
         super().__init__(args, criterion, device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr,)
-        if args.scheduled_lr:
-            self.use_scheduler()
 
     def get_model(self, args):
+        """
+        Implements base class's abstract method.
+        Retrieves and intialises a relevant model.
+        """
         model_class = self.get_model_class(args)
         return model_class()
 
     def predict_val(self, x):
+        """
+        Implements base class's abstract method.
+        Predict for x during a validation step.
+        """
         return self.model(x)
 
     def predict_test(self, x):
+        """
+        Implements base class's abstract method.
+        Predict for x during a testing step.
+        """
         return torch.nn.functional.softmax(self.model(x), dim=-1)

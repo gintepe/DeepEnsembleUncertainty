@@ -5,11 +5,19 @@ import pprint
 import torch
 import pathlib
 
+DEFAULT_DICT = {'data_dir': '/scratch/gp491/data', 'dataset_type': 'mnist', 'corrupted_test': False,
+'validation_fraction': 0.1, 'method': 'single', 'n': 5, 'model': 'lenet', 'reg_weight': 0.5, 
+'dropout': 0.5, 'scheduler': None, 'scheduler_step': 20, 'scheduler_rate': 0.1, 'batch_size': 250, 
+'epochs': 15, 'lr': 0.003, 'weight_decay': 0, 'cpu': False, 'checkpoint': False, 'num_workers': 0, 
+'reg_decay': 1}
+
 
 class Configuration(object):
-    """Configuration parameters exposed via the commandline."""
+    """Configuration for parameters exposed via the commandline."""
 
     def __init__(self, adict):
+        # load defaults to avoid erros for missing values and backward compatability
+        self.__dict__.update(DEFAULT_DICT)
         self.__dict__.update(adict)
 
     def __str__(self):
@@ -35,16 +43,22 @@ class Configuration(object):
         parser.add_argument('--n', type=int, default=5, help='Size of the ensemble to be trained.')
         parser.add_argument('--model', type=str, default='lenet', choices=['lenet', 'mlp', 'resnet'],
                             help='Model architecture to be used')
-        parser.add_argument('--reg-weight', type=float, default=0.5,
-                            help='Scaling factor for custom loss regularisation, initial value.')
-        parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate for models that use it')
 
         # training config
-        parser.add_argument('--scheduled-lr', action='store_true',
-                            help='if set, will use a learning rate scheduler, predefined for network type')
+        parser.add_argument('--reg-weight', type=float, default=0.5,
+                            help='Scaling factor for custom loss regularisation, initial value.')
+        parser.add_argument('--reg-decay', type=float, default=1, help='Exponential decay factor for regularisation weight')
+        parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate for models that use it')
+        parser.add_argument('--scheduler', type=str, choices=['step', 'exp', 'multistep'], default=None,
+                            help='if set, will use a learning rate scheduler, as specified')
+        parser.add_argument('--scheduler-step', type=int, default=20)
+        parser.add_argument('--scheduler-rate', type=float, default=0.1)
+        parser.add_argument('--optimizer', type=str, choices=['adam', 'sgd'], default='adam',
+                            help='which optimizer to use. SGD will default to momentum of 0.9')
         parser.add_argument('--batch-size', type=int, default=250, help='Batch size to use in training')
         parser.add_argument('--epochs', type=int, default=15, help='Maximum number of epochs to train for')
         parser.add_argument('--lr', type=float, default=3e-3, help='Initial learning rate')
+        parser.add_argument('--weight-decay', type=float, default=0, help='Weight regularisation penalty')
         parser.add_argument('--cpu', action='store_true',
                             help='Whether to train on the CPU. If ommited, will train on a GPU')
         parser.add_argument('--checkpoint', action='store_true', help='Whether to save chekpoints')
