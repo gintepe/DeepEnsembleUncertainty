@@ -286,7 +286,11 @@ def nc_joint_regularised_cross_entropy(mean_probs, pred_logits, ground_truth, l)
     prob_predictions = nn.functional.softmax(torch.stack(pred_logits.copy(), dim=1).detach(), dim=-1)
     sum_factor = (1 - torch.eye(len(pred_logits))).to(mean_probs.device).detach()
     sums = torch.matmul(sum_factor, (prob_predictions - mean_probs.unsqueeze(1)).detach())
-    
+
+    # ======= additional logging =======
+    cn_acc, reg_acc = 0, 0
+    # ======= additional logging =======
+
     losses = []
     for i, pred in enumerate(pred_logits):
         cn = torch.nn.functional.cross_entropy(pred, ground_truth)
@@ -295,5 +299,13 @@ def nc_joint_regularised_cross_entropy(mean_probs, pred_logits, ground_truth, l)
         # reg = torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1) - mean_probs) * (mean_probs - nn.functional.softmax(pred, dim=-1)), dim=-1))
 
         losses.append(cn + l*reg)
+        
+    # ======= additional logging =======S
+        cn_acc += cn.item()
+        reg_acc += l*reg.item()
+
+    wandb.log({'Training/crossentropy': cn_acc/len(pred_logits)})
+    wandb.log({'Training/regularizer': reg_acc/len(pred_logits)})
+    # ======= additional logging =======
 
     return losses

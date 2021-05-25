@@ -104,7 +104,7 @@ class BaseTrainer():
 
     def load_checkpoint(self, checkpoint_path):
         """ A model weights and if possible optimizer state from the given checkpoint_path """
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         if not isinstance(self.optimizer, list):
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
