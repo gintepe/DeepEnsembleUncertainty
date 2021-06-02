@@ -130,7 +130,7 @@ class BaseTrainer():
             raise ValueError('invalid network type')
 
     # TODO: doesn't need to be an instance method
-    def log_info(self, train_acc, val_loss, val_acc, batches, epoch):
+    def log_info(self, train_acc, val_loss, val_acc, val_conf, batches, epoch):
         """ 
         Log the given information to the weights and biasses logger. 
 
@@ -139,12 +139,14 @@ class BaseTrainer():
         - train_acc (float): training accuracy for the epoch
         - val_loss (flaot): mean validation loss for the epoch
         - vall_acc (float): validation accuracy for the epoch
+        - vall_conf (float): mean validation confidence for the epoch
         - batches (int): total number of training batches seen
         - epoch (int): total number of epochs elapsed
         """
         wandb.log({'Training/accuracy': train_acc, 'batch': batches, 'epoch': epoch})
         wandb.log({'Validation/loss': val_loss, 'batch': batches, 'epoch': epoch})
         wandb.log({'Validation/accuracy': val_acc, 'batch': batches, 'epoch': epoch})
+        wandb.log({'Validation/confidence': val_conf, 'batch': batches, 'epoch': epoch})
 
     def validate(self, val_loader):  
         """
@@ -158,6 +160,7 @@ class BaseTrainer():
         -------
         - validation_loss (flaot): mean loss per sample
         - validation_accuracy (float): overall accuracy for the dataset
+        - validation_confidence (float): mean prediction confidence for the dataset
         """  
         
         print('\nValidating')
@@ -165,6 +168,7 @@ class BaseTrainer():
         cum_loss = 0
         total = 0
         correct = 0
+        cum_conf = 0
 
         self.model.eval()
         
@@ -184,15 +188,17 @@ class BaseTrainer():
                     cum_loss += loss * X.size(0)
                     total += X.size(0)
 
-                    _, predicted = torch.max(y_hat, 1)
+                    confidence, predicted = torch.max(y_hat, 1)
                     correct += (predicted == y).sum().item()
+                    cum_conf += confidence.sum().item()
 
             validation_loss = cum_loss/total
             validation_accuracy = correct/total
+            validation_confidence = cum_conf/total
 
             print(f'Validation loss: {validation_loss}; accuracy: {validation_accuracy}\n')
                 
-        return validation_loss, validation_accuracy
+        return validation_loss, validation_accuracy, validation_confidence
 
     def train(self, train_loader, batches, log=True):  
         """
@@ -271,10 +277,10 @@ class BaseTrainer():
             print(f'Epoch {epoch}')
             
             correct, total, batches = self.train(train_loader, batches, log)
-            val_loss, val_acc = self.validate(val_loader)
+            val_loss, val_acc, val_conf = self.validate(val_loader)
 
             if log:
-                self.log_info(correct/total, val_loss, val_acc, batches, epoch)
+                self.log_info(correct/total, val_loss, val_acc, val_conf, batches, epoch)
 
             for sched in self.schedulers:
                 sched.step()

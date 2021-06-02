@@ -13,7 +13,7 @@ from configuration import Configuration
 
 from methods.SingleNetwork import SingleNetwork
 from methods.mcdropout.MCDropout import MCDropout
-from methods.ensemble.Ensemble import Ensemble, NCEnsemble
+from methods.ensemble.Ensemble import Ensemble, NCEnsemble, CEEnsemble
 
 def get_trainer(args, device):
     """ Select a relevant trainer based on the value specified as an argument. """
@@ -28,6 +28,9 @@ def get_trainer(args, device):
 
     if args.method == 'ncensemble':
         trainer = NCEnsemble(args, device)
+
+    if args.method == 'ceensemble':
+        trainer = CEEnsemble(args, device)
 
     return trainer
 

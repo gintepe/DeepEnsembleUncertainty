@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from metrics import basic_cross_entropy
+
 
 class SingleNetwork(BaseTrainer):
     """ Class for training simple traditional network implementations. """
@@ -19,6 +21,7 @@ class SingleNetwork(BaseTrainer):
         """
         criterion = nn.CrossEntropyLoss()
         super().__init__(args, criterion, device)
+        self.val_criterion = basic_cross_entropy
 
     def get_model(self, args):
         """
@@ -33,7 +36,8 @@ class SingleNetwork(BaseTrainer):
         Implements base class's abstract method.
         Predict for x during a validation step.
         """
-        return self.model(x)
+        # return self.model(x)
+        return torch.nn.functional.softmax(self.model(x), dim=-1)
 
     def predict_test(self, x):
         """
