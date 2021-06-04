@@ -37,11 +37,11 @@ class SingleNetwork(BaseTrainer):
         Predict for x during a validation step.
         """
         # return self.model(x)
-        return torch.nn.functional.softmax(self.model(x), dim=-1)
+        return torch.nn.functional.softmax(self.model(x), dim=-1), None
 
     def predict_test(self, x):
         """
         Implements base class's abstract method.
         Predict for x during a testing step.
         """
-        return torch.nn.functional.softmax(self.model(x), dim=-1)
+        return torch.nn.functional.softmax(self.model(x), dim=-1), None

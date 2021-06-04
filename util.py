@@ -4,6 +4,9 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 import datasets.mnist as mnist
 import datasets.cifar10 as cifar10
@@ -14,6 +17,93 @@ from configuration import Configuration
 from methods.SingleNetwork import SingleNetwork
 from methods.mcdropout.MCDropout import MCDropout
 from methods.ensemble.Ensemble import Ensemble, NCEnsemble, CEEnsemble
+
+
+def plot_cosine_similarity(trainer, remove_diag=False):
+    
+    mat = get_cosine_similarities(trainer)
+    
+    if remove_diag:
+        mat -= np.eye(mat.shape[0])
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(mat)
+
+    # We want to show all ticks...
+    ax.set_xticks(np.arange(mat.shape[0]))
+    ax.set_yticks(np.arange(mat.shape[1]))
+    # ... and label them with the respective list entries
+    ax.set_xticklabels(np.arange(mat.shape[0]) + 1)
+    ax.set_yticklabels(np.arange(mat.shape[1]) + 1) 
+
+    cbar = ax.figure.colorbar(im, ax=ax)
+    cbar.ax.set_ylabel('Cosine Similarity', rotation=-90, va="bottom")
+
+    ax.set_title("Cosine similarity of network weights")
+    fig.tight_layout()
+    plt.show()
+
+    return mat
+
+def plot_disagreement_mat(mat, remove_diag=False):
+    if remove_diag:
+        mat -= np.eye(mat.shape[0])
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(mat)
+
+    # We want to show all ticks...
+    ax.set_xticks(np.arange(mat.shape[0]))
+    ax.set_yticks(np.arange(mat.shape[1]))
+    # ... and label them with the respective list entries
+    ax.set_xticklabels(np.arange(mat.shape[0]) + 1)
+    ax.set_yticklabels(np.arange(mat.shape[1]) + 1) 
+
+    cbar = ax.figure.colorbar(im, ax=ax)
+    cbar.ax.set_ylabel('Pairwise disagreement', rotation=-90, va="bottom")
+
+    ax.set_title("Pairwise disagreement of individual predictors")
+    fig.tight_layout()
+    plt.show()
+
+def get_param_tensor(model):
+    params = []
+    for param in model.parameters():
+        params.append(param.view(-1))
+    params = torch.cat(params)
+    return params
+
+def get_cosine_similarities(trainer):
+    with torch.no_grad():
+        param_list = []
+        for net in trainer.model.networks:
+            params = get_param_tensor(net).cpu().numpy()
+            param_list.append(params)
+
+        weights = np.stack(param_list, axis=0)
+        mat = cosine_similarity(weights)
+    return mat
+
+def load_trainer(run_id, checkpoint_epoch, device='cpu'):
+    """
+    
+
+    Parameters
+    --------
+    
+    Returns
+    --------
+    - trainer (methods.BaseTrainer):
+    - model_args (namespace):
+    """
+    checkpointed_args = f'/scratch/gp491/wandb/checkpoints/{run_id}/args.json'
+    checkpointed_model = f'/scratch/gp491/wandb/checkpoints/{run_id}/epoch_{checkpoint_epoch}.pth'
+
+    model_args = Configuration.from_json(checkpointed_args)
+    trainer = get_trainer(model_args, device=device)
+    trainer.load_checkpoint(checkpointed_model)
+
+    return trainer, model_args
 
 def get_trainer(args, device):
     """ Select a relevant trainer based on the value specified as an argument. """
@@ -63,7 +153,7 @@ def test_mnist(trainer, args, metric_dict, wandb_log=True):
         for i in np.arange(0, 181, 15):
             print(f'\nShift: {i}\n')
             test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensity=i, corruption='rotation')
-            acc, metric_res, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+            acc, metric_res, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
             if wandb_log:
                 wandb.log({'Test/rotated accuracy': acc, 'shift': i})
@@ -73,7 +163,7 @@ def test_mnist(trainer, args, metric_dict, wandb_log=True):
         for i in np.arange(0, 29, 2):
             print(f'\nShift: {i}\n')
             test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensity=i, corruption='shift')
-            acc, metric_res, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+            acc, metric_res, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
             if wandb_log:
                 wandb.log({'Test/translated accuracy': acc, 'shift': i})
@@ -81,7 +171,7 @@ def test_mnist(trainer, args, metric_dict, wandb_log=True):
                     wandb.log({f'Test/translated {name}': val, 'shift': i})
     else:
         test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=False)
-        acc, metric_res, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+        acc, metric_res, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
         print(f'Testing\nAccuracy: {acc}')
 
 
@@ -102,7 +192,7 @@ def test_cifar(trainer, args, metric_dict, wandb_log=True):
     """
     
     test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=False)
-    acc, metric_res, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+    acc, metric_res, _, _, _, _= trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
     if wandb_log and args.corrupted_test:
         wandb.log({'Test/corrupted accuracy': acc, 'intensity': 0})
@@ -114,7 +204,7 @@ def test_cifar(trainer, args, metric_dict, wandb_log=True):
     if args.corrupted_test:
         for i in range(1, 6):
             test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensities=[i])
-            acc, metric_res, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+            acc, metric_res, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
             if wandb_log:
                 wandb.log({'Test/corrupted accuracy': acc, 'intensity': i})

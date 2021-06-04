@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import constants
 from methods.models import *
-from metrics import compute_accuracies_at_confidences
+from metrics import compute_accuracies_at_confidences, disagreement_and_correctness
 
 class BaseTrainer():
     """
@@ -72,7 +72,21 @@ class BaseTrainer():
     # TODO the following should probably always be the same 
     @abstractmethod
     def predict_val(self, x):
-        """ Method to retrieve predictions for input x during a validation step """
+        """ 
+        Method to retrieve predictions for input x during a validation step
+        Should always return (overall prediction, individual predictions) with the latter
+        None if a method does not use ensembling 
+        """
+        raise NotImplementedError("Abstract method without implementation provided")
+
+    @abstractmethod
+    def predict_test(self, x):
+        """
+        Compute prediction for the testing stage.
+        Expected output: probabilities 
+        Should always return (overall prediction, individual predictions) with the latter
+        None if a method does not use ensembling
+        """
         raise NotImplementedError("Abstract method without implementation provided")
 
     def save_checkpoint(self, epoch, loss):
@@ -108,15 +122,6 @@ class BaseTrainer():
         self.model.load_state_dict(checkpoint['model_state_dict'])
         if not isinstance(self.optimizer, list):
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-    @abstractmethod
-    def predict_test(self, x):
-        """
-        Compute prediction for the testing stage.
-        Expected output: probabilities 
-        """
-        raise NotImplementedError("Abstract method without implementation provided")
-
     
     def get_model_class(self, args):
         """ Retrieve the model class corresponding to the specification in args """
@@ -130,7 +135,7 @@ class BaseTrainer():
             raise ValueError('invalid network type')
 
     # TODO: doesn't need to be an instance method
-    def log_info(self, train_acc, val_loss, val_acc, val_conf, batches, epoch):
+    def log_info(self, train_acc, val_loss, val_acc, val_conf, val_avg_acc, val_avg_dis, batches, epoch):
         """ 
         Log the given information to the weights and biasses logger. 
 
@@ -147,6 +152,9 @@ class BaseTrainer():
         wandb.log({'Validation/loss': val_loss, 'batch': batches, 'epoch': epoch})
         wandb.log({'Validation/accuracy': val_acc, 'batch': batches, 'epoch': epoch})
         wandb.log({'Validation/confidence': val_conf, 'batch': batches, 'epoch': epoch})
+        if val_avg_acc is not None:
+            wandb.log({'Validation/subnet_accuracy': val_avg_acc, 'batch': batches, 'epoch': epoch})
+            wandb.log({'Validation/pairwise_disagreement': val_avg_dis, 'batch': batches, 'epoch': epoch})
 
     def validate(self, val_loader):  
         """
@@ -169,6 +177,8 @@ class BaseTrainer():
         total = 0
         correct = 0
         cum_conf = 0
+        avg_correct = 0
+        disagreed = 0
 
         self.model.eval()
         
@@ -178,7 +188,7 @@ class BaseTrainer():
                     
                     X, y = X.to(self.device), y.to(self.device)
 
-                    y_hat = self.predict_val(X)
+                    y_hat, preds = self.predict_val(X)
 
                     loss = self.val_criterion(y_hat, y)
 
@@ -192,13 +202,20 @@ class BaseTrainer():
                     correct += (predicted == y).sum().item()
                     cum_conf += confidence.sum().item()
 
+                    dis, avgc, _ = disagreement_and_correctness(preds, y)
+                    avg_correct += avgc
+                    disagreed += dis
+
             validation_loss = cum_loss/total
             validation_accuracy = correct/total
             validation_confidence = cum_conf/total
 
+            validation_subnet_accuracy = None if preds is None else avg_correct/total
+            validation_avg_disagreement = None if preds is None else disagreed/total
+
             print(f'Validation loss: {validation_loss}; accuracy: {validation_accuracy}\n')
                 
-        return validation_loss, validation_accuracy, validation_confidence
+        return validation_loss, validation_accuracy, validation_confidence, validation_subnet_accuracy, validation_avg_disagreement
 
     def train(self, train_loader, batches, log=True):  
         """
@@ -277,10 +294,10 @@ class BaseTrainer():
             print(f'Epoch {epoch}')
             
             correct, total, batches = self.train(train_loader, batches, log)
-            val_loss, val_acc, val_conf = self.validate(val_loader)
+            val_loss, val_acc, val_conf, val_avg_acc, val_dis = self.validate(val_loader)
 
             if log:
-                self.log_info(correct/total, val_loss, val_acc, val_conf, batches, epoch)
+                self.log_info(correct/total, val_loss, val_acc, val_conf, val_avg_acc, val_dis, batches, epoch)
 
             for sched in self.schedulers:
                 sched.step()
@@ -288,7 +305,7 @@ class BaseTrainer():
         if self.checkpoint_dir is not None:
             self.save_checkpoint(epoch, val_loss)
 
-    def test(self, test_loader, metric_dict, confidence_thresholds=None, entropy_bins=None):  
+    def test(self, test_loader, metric_dict, confidence_thresholds=None, entropy_bins=None, track_full_disagreements=False):  
         """
         Testing/evaluation logic.
         Returns and computes some extra information to allow for further data visualisaton.
@@ -308,6 +325,8 @@ class BaseTrainer():
         -------
         - test_accuracy (float): Accuracy of the predictions accross the testing set.
         - metric_accumulators (dictionary {name: float}): mean values of the metrics given.
+          For ensembling based methods/ones making multiple predictions, average pair disagreement
+          and average component accuracy are added to the required metrics returned here. 
         - thresholded_accuracy (np.ndarray): an array containing accuracies of predictions with 
           confidence over a corresponding threshold in the cinfidence_thresholds parameter.
           None if the latter not supplied.
@@ -316,12 +335,17 @@ class BaseTrainer():
           None if the latter not supplied.
         - binned_entropy_counts (nd.array): histogram values for prediction entropy, corresponding 
           to bin edges supplied as the entropy_bans parameter. None if the latter not supplied. 
+        - disagreement_mat (nd.array): For ensemble methods, an n by n matrix containing the
+          percentage of samples given pairs of classifiers disagree on. 
         """
 
         print('\nTesting')
         cum_loss = 0
         total = 0
         correct = 0
+        avg_corr = 0
+        disagreements = 0
+        disagreement_mat = np.zeros((self.n, self.n)) if track_full_disagreements else None
 
         thresholded_counts, thresholded_accuracy, binned_entropy_counts = None, None, None
         if confidence_thresholds is not None:
@@ -340,7 +364,7 @@ class BaseTrainer():
                     
                     X, y = X.to(self.device), y.to(self.device)
 
-                    y_hat = self.predict_test(X)
+                    y_hat, preds = self.predict_test(X)
 
                     for name, metric in metric_dict.items():
                         metric_val = metric(y_hat, y)
@@ -360,6 +384,12 @@ class BaseTrainer():
                     if entropy_bins is not None:
                         t_entropy = scipy.stats.entropy(y_hat.cpu().numpy(), axis=1)
                         binned_entropy_counts += np.histogram(t_entropy, entropy_bins)[0]
+
+                    dis, avgc, dis_mat = disagreement_and_correctness(preds, y)
+                    disagreements += dis
+                    avg_corr += avgc
+                    if track_full_disagreements:
+                        disagreement_mat += dis_mat
             
             if confidence_thresholds is not None:
                 thresholded_accuracy = thresholded_accuracy / thresholded_counts
@@ -370,5 +400,11 @@ class BaseTrainer():
             for name, val in metric_accumulators.items():
                 metric_accumulators[name] = val/total
                 print(f'{name}: {metric_accumulators[name]}')
-                
-        return test_accuracy, metric_accumulators, thresholded_accuracy, thresholded_counts, binned_entropy_counts
+
+            if preds is not None:
+                metric_accumulators['disagreement'] = disagreements / total
+                metric_accumulators['component accuracy'] = avg_corr / total
+                if track_full_disagreements:
+                        disagreement_mat /= total
+
+        return test_accuracy, metric_accumulators, thresholded_accuracy, thresholded_counts, binned_entropy_counts, disagreement_mat

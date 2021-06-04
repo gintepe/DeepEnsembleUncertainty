@@ -53,11 +53,11 @@ class MCDropout(BaseTrainer):
         Predict for x during a validation step.
         """
         # return self.model(x)
-        return self.model.mc_predict(x, self.n)[0]
+        return self.model.mc_predict(x, self.n)#[0]
 
     def predict_test(self, x):
         """
         Implements base class's abstract method.
         Predict for x during a testing step.
         """
-        return self.model.mc_predict(x, self.n)[0]
+        return self.model.mc_predict(x, self.n)#[0]
