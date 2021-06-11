@@ -38,6 +38,8 @@ class SimpleEnsemble(nn.Module):
         """
         preds = [net(x) for net in self.networks]
 
-        torch.mean(nn.functional.softmax(torch.stack(preds.copy(), dim=0), dim=-1), dim=0)
+        # average before softmax
+        # combined_pred = nn.functional.softmax(torch.mean(torch.stack(preds.copy(), dim=0), dim=0), dim=-1)
+        # softmax before average
         combined_pred = torch.mean(nn.functional.softmax(torch.stack(preds.copy(), dim=0), dim=-1), dim=0)
         return combined_pred, preds

@@ -43,7 +43,10 @@ class BaseEnsemble(BaseTrainer):
         Retrieves and intialises an ensemble of relevant models.
         """
         model_class = self.get_model_class(args)
-        return SimpleEnsemble(model_class, n=self.n)
+        if args.dataset_type == 'cifar100':
+            return SimpleEnsemble(model_class, n=self.n, num_classes=100)
+        else:
+            return SimpleEnsemble(model_class, n=self.n)
 
     def predict_val(self, x):
         """
@@ -195,6 +198,7 @@ class NCEnsemble(BaseEnsemble):
         
         self.n = args.n
         self.l = args.reg_weight
+        self.min_l = args.reg_min
         self.decay = args.reg_decay
         
         criterion = self.nc_joint_regularised_cross_entropy
@@ -224,7 +228,8 @@ class NCEnsemble(BaseEnsemble):
 
         correct, total, batches = super().train(train_loader, batches, log)
 
-        self.l = self.l * self.decay
+        if self.l > self.min_l:
+            self.l = self.l * self.decay
 
         return correct, total, batches
     
@@ -301,6 +306,7 @@ class CEEnsemble(BaseEnsemble):
         
         self.n = args.n
         self.l = args.reg_weight
+        self.min_l = args.reg_min
         self.decay = args.reg_decay
         
         criterion = self.ce_joint_regularised_cross_entropy
@@ -329,7 +335,8 @@ class CEEnsemble(BaseEnsemble):
 
         correct, total, batches = super().train(train_loader, batches, log)
 
-        self.l = self.l * self.decay
+        if self.l > self.min_l:
+            self.l = self.l * self.decay
 
         return correct, total, batches
 
@@ -369,7 +376,6 @@ class CEEnsemble(BaseEnsemble):
             reg = 0
             for j, pred_extra in enumerate(pred_logits):
                 if not i == j:
-                    #TODO: this should probably be a mean because now the scaling will depend on batch size??
                     # reg += torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach() )/(len(pred_logits)*len(pred_logits)-1)
                     reg += torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach(), dim=-1))/(len(pred_logits)*len(pred_logits)-1)
             

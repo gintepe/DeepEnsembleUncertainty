@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import constants
 from methods.models import *
-from metrics import compute_accuracies_at_confidences, disagreement_and_correctness
+from metrics import compute_accuracies_at_confidences, disagreement_and_correctness, bin_predictions_and_accuracies_multiclass
 
 class BaseTrainer():
     """
@@ -305,11 +305,20 @@ class BaseTrainer():
         if self.checkpoint_dir is not None:
             self.save_checkpoint(epoch, val_loss)
 
-    def test(self, test_loader, metric_dict, confidence_thresholds=None, entropy_bins=None, track_full_disagreements=False):  
+    def test(
+          self, 
+          test_loader, 
+          metric_dict, 
+          confidence_thresholds=None, 
+          entropy_bins=None, 
+          track_full_disagreements=False,
+          calibration_hist_bins=None,
+          ):  
         """
         Testing/evaluation logic.
         Returns and computes some extra information to allow for further data visualisaton.
         For only customisable behaviour, discard the final 3 returned items and last 2 params.
+        Parameters 3 and further are primarily used for checkpoint evaluation and plotting.
 
         Parameters
         -------
@@ -320,13 +329,16 @@ class BaseTrainer():
           parameter should contain a list of increasing thresholds in the range [0, 1].
         - entropy_bins (np.ndarray): if binned entrypy counts are needed, this parameter should 
           contain a list of bin boundaries in a desired range.
+        - track_full_disagreements (bool): wether to compute and track a full disagreement matrix
+        - calibration_hist_bins (int):
 
         Returns
         -------
         - test_accuracy (float): Accuracy of the predictions accross the testing set.
         - metric_accumulators (dictionary {name: float}): mean values of the metrics given.
           For ensembling based methods/ones making multiple predictions, average pair disagreement
-          and average component accuracy are added to the required metrics returned here. 
+          and average component accuracy are added to the required metrics returned here. For all 
+          models, an everage confidence metric is added.
         - thresholded_accuracy (np.ndarray): an array containing accuracies of predictions with 
           confidence over a corresponding threshold in the cinfidence_thresholds parameter.
           None if the latter not supplied.
@@ -337,6 +349,7 @@ class BaseTrainer():
           to bin edges supplied as the entropy_bans parameter. None if the latter not supplied. 
         - disagreement_mat (nd.array): For ensemble methods, an n by n matrix containing the
           percentage of samples given pairs of classifiers disagree on. 
+        - calibration_hist (Tuple(np.ndarray)): calibration histogram bins and average accuracy values
         """
 
         print('\nTesting')
@@ -344,8 +357,12 @@ class BaseTrainer():
         total = 0
         correct = 0
         avg_corr = 0
+        cum_conf = 0
         disagreements = 0
         disagreement_mat = np.zeros((self.n, self.n)) if track_full_disagreements else None
+        calibration_bins = None
+        calibration_hist_vals = None if calibration_hist_bins is None else np.zeros(calibration_hist_bins)
+        calibration_hist_counts = None if calibration_hist_bins is None else np.zeros(calibration_hist_bins)
 
         thresholded_counts, thresholded_accuracy, binned_entropy_counts = None, None, None
         if confidence_thresholds is not None:
@@ -373,8 +390,9 @@ class BaseTrainer():
 
                     total += X.size(0)
 
-                    _, predicted = torch.max(y_hat, 1)
+                    confidence, predicted = torch.max(y_hat, 1)
                     correct += (predicted == y).sum().item()
+                    cum_conf += confidence.sum().item()
 
                     if confidence_thresholds is not None:
                         t_acc, t_count = compute_accuracies_at_confidences(y.cpu().numpy(), y_hat.cpu().numpy(), confidence_thresholds)
@@ -390,16 +408,20 @@ class BaseTrainer():
                     avg_corr += avgc
                     if track_full_disagreements:
                         disagreement_mat += dis_mat
+
+                    if calibration_hist_bins is not None:
+                        bin_edges, accuracies, counts = bin_predictions_and_accuracies_multiclass(y_hat.cpu().numpy(), y.cpu().numpy(), calibration_hist_bins)
+                        calibration_bins = bin_edges
+                        calibration_hist_vals += np.multiply(accuracies, counts)
+                        calibration_hist_counts += counts
+
             
             if confidence_thresholds is not None:
                 thresholded_accuracy = thresholded_accuracy / thresholded_counts
 
-            test_accuracy = correct/total
-            
-            print(f'Results: \nAccuracy: {test_accuracy}')
-            for name, val in metric_accumulators.items():
-                metric_accumulators[name] = val/total
-                print(f'{name}: {metric_accumulators[name]}')
+            if calibration_hist_bins is not None:
+                non_zero_counts = np.where(calibration_hist_counts > 0)
+                calibration_hist_vals[non_zero_counts] = calibration_hist_vals[non_zero_counts] / calibration_hist_counts[non_zero_counts]
 
             if preds is not None:
                 metric_accumulators['disagreement'] = disagreements / total
@@ -407,4 +429,11 @@ class BaseTrainer():
                 if track_full_disagreements:
                         disagreement_mat /= total
 
-        return test_accuracy, metric_accumulators, thresholded_accuracy, thresholded_counts, binned_entropy_counts, disagreement_mat
+            test_accuracy = correct/total
+            metric_accumulators['confidence'] = cum_conf / total
+            print(f'Results: \nAccuracy: {test_accuracy}')
+            for name, val in metric_accumulators.items():
+                metric_accumulators[name] = val/total
+                print(f'{name}: {metric_accumulators[name]}')
+
+        return test_accuracy, metric_accumulators, thresholded_accuracy, thresholded_counts, binned_entropy_counts, disagreement_mat, (calibration_hist_vals, calibration_bins)

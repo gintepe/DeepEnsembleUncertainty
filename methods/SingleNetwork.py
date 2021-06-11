@@ -29,7 +29,12 @@ class SingleNetwork(BaseTrainer):
         Retrieves and intialises a relevant model.
         """
         model_class = self.get_model_class(args)
-        return model_class()
+
+        #TODO: maybe model classes should just take args for intialisation??
+        if args.dataset_type == 'cifar100':
+            return model_class(num_classes=100)
+        else:
+            return model_class()
 
     def predict_val(self, x):
         """

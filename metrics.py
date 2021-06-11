@@ -14,6 +14,21 @@ import scipy
 
 
 def disagreement_and_correctness(predictions, gt):
+  """
+  Computes the average number of samples a pair of predictors disagree on
+  as well as the average number of correct predictions per predictor.
+
+  Parameters
+  --------
+  - predictions (List[torch.tensor]): batch of predictions for each individual predictor.
+  - gt (torch.tensor): ground truth labls (integers)
+
+  Returns
+  -------
+  - disagreements (flaot): average number of samples a pair of predictors disagree on
+  - correctness (float): average number of samples predicted correctly per predictor
+  - disagreement_matrix (np.ndarray): matrix representing counts of disagreements by pair
+  """
   
   if predictions is None:
     return 0, 0, None
@@ -53,6 +68,38 @@ def wrap_ece(bins):
 def wrap_brier():
   """ convenience wrapper for the Brier score computation when bins are fixed """
   return lambda prob, gt: np.mean(brier_scores(gt.cpu().numpy(), prob.cpu().numpy()))
+
+
+def bin_predictions_and_accuracies_multiclass(probabilities, ground_truth, bins=10):
+  """
+  A helper function which histograms a vector of probabilities into bins, but for multiclass
+  classification.
+  (Useful for plotting)
+  
+  Parameters
+  -----
+    probabilities: A numpy vector of N probabilities assigned to each prediction
+    ground_truth: A numpy vector of N ground truth labels in {0,1}
+    bins: Number of equal width bins to bin predictions into in [0, 1], or an
+      array representing bin edges.
+  
+  Returns
+  -----
+    bin_edges: Numpy vector of floats containing the edges of the bins
+      (including leftmost and rightmost).
+    accuracies: Numpy vector of floats for the average accuracy of the
+      predictions in each bin.
+    counts: Numpy vector of ints containing the number of examples per bin.
+  """
+  probs, is_correct = get_multiclass_predictions_and_correctness(
+      probabilities, ground_truth, top_k=1)
+  probs = probs.flatten()
+  is_correct = is_correct.flatten()
+  bin_edges, accuracies, counts = bin_predictions_and_accuracies(
+      probs, is_correct, bins)
+  np.nan_to_num(accuracies, copy=False, nan=0.0)
+  return bin_edges, accuracies, counts
+
 
 def bin_predictions_and_accuracies(probabilities, ground_truth, bins=10):
   """

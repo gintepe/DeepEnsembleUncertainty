@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
     if args.dataset_type == 'mnist':
         test_mnist(trainer, args, metric_dict)
-    if args.dataset_type == 'cifar10':
+    if 'cifar' in args.dataset_type:
         test_cifar(trainer, args, metric_dict)
 
 

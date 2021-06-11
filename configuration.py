@@ -9,7 +9,7 @@ DEFAULT_DICT = {'data_dir': '/scratch/gp491/data', 'dataset_type': 'mnist', 'cor
 'validation_fraction': 0.1, 'method': 'single', 'n': 5, 'model': 'lenet', 'reg_weight': 0.5, 
 'dropout': 0.5, 'scheduler': None, 'scheduler_step': 20, 'scheduler_rate': 0.1, 'batch_size': 250, 
 'epochs': 15, 'lr': 0.003, 'weight_decay': 0, 'cpu': False, 'checkpoint': False, 'num_workers': 0, 
-'reg_decay': 1}
+'reg_decay': 1, 'reg_min': 0}
 
 
 class Configuration(object):
@@ -31,7 +31,7 @@ class Configuration(object):
         parser.add_argument('--data-dir', type=str, default='/scratch/gp491/data',
                             help='Directory the relevant datasets can be found in')
         parser.add_argument('--dataset-type', type=str, default='mnist',
-                            choices=['cifar10', 'mnist'], help='Dataset name')
+                            choices=['cifar10', 'cifar100', 'mnist'], help='Dataset name')
         parser.add_argument('--corrupted-test', action='store_true',
                             help='Whether to use a corrupted (shifted) testing set. If omitted, will use the standar one.')
         parser.add_argument('--validation-fraction', type=float, default=0.1,
@@ -47,6 +47,8 @@ class Configuration(object):
         # training config
         parser.add_argument('--reg-weight', type=float, default=0.5,
                             help='Scaling factor for custom loss regularisation, initial value.')
+        parser.add_argument('--reg-min', type=float, default=0.0,
+                            help='Lower bound on the regularisation scaling constant.')
         parser.add_argument('--reg-decay', type=float, default=1, help='Exponential decay factor for regularisation weight')
         parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate for models that use it')
         parser.add_argument('--scheduler', type=str, choices=['step', 'exp', 'multistep'], default=None,

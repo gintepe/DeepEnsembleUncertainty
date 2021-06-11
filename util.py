@@ -20,6 +20,19 @@ from methods.ensemble.Ensemble import Ensemble, NCEnsemble, CEEnsemble
 
 
 def plot_cosine_similarity(trainer, remove_diag=False):
+    """
+    For an ensemble model, will compute and visualise a matrix of cosine similarity
+    between the weights of individual predictors.
+
+    Parameters
+    --------
+    - trainer (methods.BaseTrainer): trainer for the desired ensemble
+    - remove_diag (bool): wether to subtract 1 from the main diagonal (self-similarity entries)
+
+    Returns
+    --------
+    - mat (np.ndarray): cosine similarity matrix
+    """
     
     mat = get_cosine_similarities(trainer)
     
@@ -46,6 +59,15 @@ def plot_cosine_similarity(trainer, remove_diag=False):
     return mat
 
 def plot_disagreement_mat(mat, remove_diag=False):
+    """
+    Visualise a given disagreement matrix
+
+    Parameters
+    --------
+    - mat (np.ndarray): disagreement matrix
+    - remove_diag (bool): wether to subtract 1 from the main diagonal (self-disagreement entries)
+    """
+
     if remove_diag:
         mat -= np.eye(mat.shape[0])
 
@@ -67,6 +89,7 @@ def plot_disagreement_mat(mat, remove_diag=False):
     plt.show()
 
 def get_param_tensor(model):
+    """ Flatten the parameters of a model into a single one-dimensional vector """
     params = []
     for param in model.parameters():
         params.append(param.view(-1))
@@ -74,6 +97,18 @@ def get_param_tensor(model):
     return params
 
 def get_cosine_similarities(trainer):
+    """
+    For an ensemble model, will compute a matrix of cosine similarity between 
+    the weights of individual predictors.
+
+    Parameters
+    --------
+    - trainer (methods.BaseTrainer): trainer for the desired ensemble
+
+    Returns
+    --------
+    - mat (np.ndarray): cosine similarity matrix
+    """
     with torch.no_grad():
         param_list = []
         for net in trainer.model.networks:
@@ -86,11 +121,14 @@ def get_cosine_similarities(trainer):
 
 def load_trainer(run_id, checkpoint_epoch, device='cpu'):
     """
-    
+    Load a checkpoint from a given epoch of a given run.
 
     Parameters
     --------
-    
+    - run_id (str): id of the run, as it appears in the logging directory
+    - checkpoint_epoch (int): which epoch was the desired checkpoint recorded on
+    - device (str): which device (cpu or gpu) to load the checkpointed model to.
+
     Returns
     --------
     - trainer (methods.BaseTrainer):
@@ -130,9 +168,13 @@ def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, 
         return mnist.get_mnist_train_valid_loader(data_dir, batch_size, random_seed=1, 
                                                     valid_size=val_fraction, num_workers=num_workers)
     if dataset_type == 'cifar10':
-        return cifar10.get_cifar10_train_valid_loader(data_dir, batch_size, augment=True, 
+        return cifar10.get_cifar_train_valid_loader(data_dir, batch_size, augment=True, 
                                                         random_seed=1, valid_size=val_fraction,
                                                         num_workers=num_workers)
+    if dataset_type == 'cifar100':
+        return cifar10.get_cifar_train_valid_loader(data_dir, batch_size, augment=True, 
+                                                        random_seed=1, valid_size=val_fraction,
+                                                        num_workers=num_workers, is_cifar10=False)
 
 def test_mnist(trainer, args, metric_dict, wandb_log=True):
     """
@@ -177,7 +219,7 @@ def test_mnist(trainer, args, metric_dict, wandb_log=True):
 
 def test_cifar(trainer, args, metric_dict, wandb_log=True):
     """
-    Testing logic for the CIFAR10 dataset.
+    Testing logic for the CIFAR datasets.
     If specified in args, testing will be carried out for different
     lovels of corruptions applied to the test set images.
 
@@ -190,8 +232,10 @@ def test_cifar(trainer, args, metric_dict, wandb_log=True):
     - wandb_log (bool): whether to log results to the weights 
     and biases logger  
     """
+
+    is_cifar10 = args.dataset_type == 'cifar10'
     
-    test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=False)
+    test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=False, is_cifar10=is_cifar10)
     acc, metric_res, _, _, _, _= trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
     if wandb_log and args.corrupted_test:
@@ -203,7 +247,7 @@ def test_cifar(trainer, args, metric_dict, wandb_log=True):
 
     if args.corrupted_test:
         for i in range(1, 6):
-            test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensities=[i])
+            test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensities=[i], is_cifar10=is_cifar10)
             acc, metric_res, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
             if wandb_log:

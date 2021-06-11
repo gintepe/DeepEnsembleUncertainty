@@ -31,7 +31,10 @@ class MCDropout(BaseTrainer):
         Retrieves and intialises a relevant model.
         """
         model_class = self.get_model_class(args)
-        return model_class(dropout_p=args.dropout)
+        if args.dataset_type == 'cifar100':
+            return model_class(dropout_p=args.dropout, num_classes=100)
+        else:
+            return model_class(dropout_p=args.dropout)
 
     def get_model_class(self, args):
         """

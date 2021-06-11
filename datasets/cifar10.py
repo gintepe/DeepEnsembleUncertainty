@@ -10,14 +10,15 @@ import datasets.data_util as data_util
 
 import constants
 
-def get_cifar10_train_valid_loader(data_dir,
+def get_cifar_train_valid_loader(data_dir,
                            batch_size,
                            augment,
                            random_seed,
                            valid_size=0.1,
                            shuffle=True,
                            num_workers=4,
-                           pin_memory=False):
+                           pin_memory=False,
+                           is_cifar10=True):
     """
     Utility function for loading and returning train and valid
     multi-process iterators over the CIFAR-10 dataset.
@@ -36,6 +37,7 @@ def get_cifar10_train_valid_loader(data_dir,
     - num_workers (int): number of subprocesses to use when loading the dataset.
     - pin_memory (bool): whether to copy tensors into CUDA pinned memory. Set it to
       True if using GPU.
+    - is_cifar10 (bool): when true, will load cifar10, otherwise will load cifar100. 
     
     Returns
     -------
@@ -61,8 +63,10 @@ def get_cifar10_train_valid_loader(data_dir,
     else:
         train_transform = valid_transform
 
+    dataset = datasets.CIFAR10 if is_cifar10 else datasets.CIFAR100
+
     train_loader, valid_loader = data_util.get_train_valid_loader(data_dir, batch_size, 
-                                    random_seed, train_transform, valid_transform, datasets.CIFAR10, 
+                                    random_seed, train_transform, valid_transform, dataset, 
                                     valid_size, shuffle, num_workers, pin_memory)
 
     return (train_loader, valid_loader)
@@ -74,7 +78,8 @@ def get_test_loader(data_dir,
                     pin_memory=False,
                     corrupted=False,
                     corruptions=constants.CORRUPTIONS, 
-                    intensities=range(1,6),):
+                    intensities=range(1,6),
+                    is_cifar10=True,):
     """
     Utility function for loading and returning a multi-process
     test iterator over the CIFAR-10 dataset.
@@ -91,6 +96,7 @@ def get_test_loader(data_dir,
     - corrupted (bool): whether to load the regular test dataset or the curropted version.
     - corruptions (List[str]): if corrupted, which corruptions to load
     - intensities (List[int]): the intensities to load (1 to 5) for the specfied corruptions
+    - is_cifar10 (bool): when true, will load cifar10, otherwise will load cifar100. 
     
     Returns
     -------
@@ -105,10 +111,16 @@ def get_test_loader(data_dir,
     ])
 
     if corrupted:
-        dataset = CorruptedCifar10Test(f'{data_dir}/CIFAR-10-C', corruptions, 
+        sub_data_dir = f'{data_dir}/CIFAR-10-C' if is_cifar10 else f'{data_dir}/CIFAR-100-C'
+        dataset = CorruptedCifarTest(sub_data_dir, corruptions, 
                                         intensities, transform=transform)
-    else:
+    elif is_cifar10:
         dataset = datasets.CIFAR10(
+            root=data_dir, train=False,
+            download=False, transform=transform,
+        )
+    else:
+        dataset = datasets.CIFAR100(
             root=data_dir, train=False,
             download=False, transform=transform,
         )
@@ -121,7 +133,7 @@ def get_test_loader(data_dir,
     return data_loader
 
 
-class CorruptedCifar10Test(Dataset):
+class CorruptedCifarTest(Dataset):
     """ Represent the corrupted CIFAR10 dataset alongside correct labels"""
 
     def __init__(self, data_dir, corruptions=constants.CORRUPTIONS, intensities=range(1,6), transform=None):
@@ -182,7 +194,8 @@ def get_CIFAR10_loaders(data_dir,
                         pin_memory=False,
                         corrupted_test=False,
                         corruptions=constants.CORRUPTIONS, 
-                        intensities=range(1,6)):
+                        intensities=range(1,6),
+                        is_cifar10=True):
 
     """
     Utility function for loading and returning training, validation and testing
@@ -205,6 +218,7 @@ def get_CIFAR10_loaders(data_dir,
     - corrupted_test (bool): whether to load the regular test dataset or the curropted version.
     - corruptions (List[str]): if corrupted, which corruptions to load
     - intensities (List[int]): the intensities to load (1 to 5) for the specfied corruptions
+    - is_cifar10 (bool): when true, will load cifar10, otherwise will load cifar100. 
     
     Returns
     -------
@@ -213,9 +227,9 @@ def get_CIFAR10_loaders(data_dir,
     - test_loader: test set iterator.
     """
     
-    train_loader, valid_loader = get_cifar10_train_valid_loader(data_dir, batch_size, augment,
-                                    random_seed, valid_size, shuffle, num_workers, pin_memory)
+    train_loader, valid_loader = get_cifar_train_valid_loader(data_dir, batch_size, augment,
+                                    random_seed, valid_size, shuffle, num_workers, pin_memory, is_cifar10)
     test_loader = get_test_loader(data_dir, batch_size, shuffle, num_workers, pin_memory,
-                                    corrupted_test, corruptions, intensities)
+                                    corrupted_test, corruptions, intensities, is_cifar10)
 
     return train_loader, valid_loader, test_loader
