@@ -39,7 +39,7 @@ class Configuration(object):
 
         # method config
         parser.add_argument('--method', type=str, default='single',
-                            choices=['single', 'ensemble', 'mcdrop', 'ncensemble', 'ceensemble'], help='method to run')
+                            choices=['single', 'ensemble', 'mcdrop', 'ncensemble', 'ceensemble', 'moe'], help='method to run')
         parser.add_argument('--n', type=int, default=5, help='Size of the ensemble to be trained.')
         parser.add_argument('--model', type=str, default='lenet', choices=['lenet', 'mlp', 'resnet'],
                             help='Model architecture to be used')

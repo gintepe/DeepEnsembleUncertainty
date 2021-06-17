@@ -14,6 +14,9 @@ import constants
 from methods.models import *
 from metrics import compute_accuracies_at_confidences, disagreement_and_correctness, bin_predictions_and_accuracies_multiclass
 
+#TODO this is super non regression-friendly
+# maybe it would be a good idea to adjust somehow to make it more flexible 
+
 class BaseTrainer():
     """
     Base class encompassing the training loop for most methods
@@ -423,17 +426,17 @@ class BaseTrainer():
                 non_zero_counts = np.where(calibration_hist_counts > 0)
                 calibration_hist_vals[non_zero_counts] = calibration_hist_vals[non_zero_counts] / calibration_hist_counts[non_zero_counts]
 
+            test_accuracy = correct/total
+            print(f'Results: \nAccuracy: {test_accuracy}')
+            for name, val in metric_accumulators.items():
+                metric_accumulators[name] = val/total
+                print(f'{name}: {metric_accumulators[name]}')
+            metric_accumulators['confidence'] = cum_conf / total
+            
             if preds is not None:
                 metric_accumulators['disagreement'] = disagreements / total
                 metric_accumulators['component accuracy'] = avg_corr / total
                 if track_full_disagreements:
                         disagreement_mat /= total
-
-            test_accuracy = correct/total
-            metric_accumulators['confidence'] = cum_conf / total
-            print(f'Results: \nAccuracy: {test_accuracy}')
-            for name, val in metric_accumulators.items():
-                metric_accumulators[name] = val/total
-                print(f'{name}: {metric_accumulators[name]}')
 
         return test_accuracy, metric_accumulators, thresholded_accuracy, thresholded_counts, binned_entropy_counts, disagreement_mat, (calibration_hist_vals, calibration_bins)

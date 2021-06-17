@@ -25,5 +25,8 @@ if __name__ == '__main__':
                 'ECE': metrics.wrap_ece(bins=20), 
                 'Brier': metrics.wrap_brier()}
 
-    test_mnist(trainer, model_args, metric_dict, wandb_log=False)
+    if model_args.dataset_type=='mnist':
+        test_mnist(trainer, model_args, metric_dict, wandb_log=False)
+    else:
+        test_cifar(trainer, model_args, metric_dict, False)
 

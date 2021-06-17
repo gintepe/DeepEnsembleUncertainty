@@ -358,10 +358,14 @@ def get_quantile_bins(num_bins, probs, top_k=1):
   return bins
 
 
-def _validate_probabilities(probabilities, multiclass=False):
-  if np.max(probabilities) > 1. or np.min(probabilities) < 0.:
+def _validate_probabilities(probabilities, multiclass=False, tol=1e-5):
+  if np.max(probabilities) > 1. + tol or np.min(probabilities) < 0. - tol:
+    # print(probabilities)
+    # print('min', np.min(probabilities))
+    # print('max', np.max(probabilities))
+    # print(np.sum(probabilities, axis=-1))
     raise ValueError('All probabilities must be in [0,1].')
   if multiclass and not np.allclose(1, np.sum(probabilities, axis=-1),
-                                    atol=1e-5):
+                                    atol=tol):
     raise ValueError(
         'Multiclass probabilities must sum to 1 along the last dimension.')

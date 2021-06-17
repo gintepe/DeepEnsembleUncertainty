@@ -184,7 +184,7 @@ class CorruptedCifarTest(Dataset):
         self.corrupted_images = np.concatenate(sets, axis=0)
 
 
-def get_CIFAR10_loaders(data_dir, 
+def get_CIFAR_loaders(data_dir, 
                         batch_size,
                         augment,
                         random_seed,

@@ -3,6 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 
+# TODO regression
+# For the regression experiments we could potentially compare to, a very simple set-up, with a single hidden layer 
+# with 50 or 100 units was used. the main challenge would probably come from adapting the full set-up and metric tracking 
+
 #TODO: more manual weight initialisation?
 class LeNet5(nn.Module):
     # for the 28 by 28 mnist
@@ -15,7 +19,7 @@ class LeNet5(nn.Module):
     [1]: Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner. Gradient-based learning applied  
          to document recognition. Proceedings of the IEEE, november 1998. 
     """
-    def __init__(self):
+    def __init__(self, num_classes=10):
         """Initialises a standard LeNet network."""
         
         super(LeNet5, self).__init__()
@@ -35,7 +39,7 @@ class LeNet5(nn.Module):
             nn.Linear(in_features=120, out_features=84),
             nn.Tanh(),
 
-            nn.Linear(in_features=84, out_features=10),
+            nn.Linear(in_features=84, out_features=num_classes),
         )
 
     def forward(self, x):
@@ -59,7 +63,7 @@ class MLP(nn.Module):
          "Simple and scalable predictive uncertainty estimation using deep ensembles." 
          arXiv preprint arXiv:1612.01474 (2016).
     """
-    def __init__(self, size_in=1*28*28, size_out=10, n_hidden_layer=3, n_hidden_units=200):
+    def __init__(self, size_in=1*28*28, num_classes=10, n_hidden_layer=3, n_hidden_units=200):
         """
         Initialise a customisable multilayer perceptron.
 
@@ -82,7 +86,7 @@ class MLP(nn.Module):
                                 nn.BatchNorm1d(num_features=n_hidden_units),
                                 nn.ReLU(),
                                 *hidden_layers,
-                                nn.Linear(n_hidden_units, size_out),)
+                                nn.Linear(n_hidden_units, num_classes),)
 
     def forward(self, x):
         """Compute prediction probability logits for x"""
