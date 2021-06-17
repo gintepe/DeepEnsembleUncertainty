@@ -16,30 +16,45 @@ class SimpleMoE(BaseTrainer):
 
         criterion = basic_cross_entropy
         self.n = args.n
+        self.gated_predict = args.predict_gated
         super().__init__(args, criterion, device)
         self.val_criterion = basic_cross_entropy
 
     def get_model(self, args):
         """ Retrieves and initialises the relevant model as specified by args. """
         model_class = self.get_model_class(args)
-        if args.dataset_type == 'cifar100':
-            return DenseBasicMoE(model_class, n=self.n, num_classes=100)
+        
+        if args.moe_type == 'fixed':
+            moe_class = DenseFixedMoE
         else:
-            return DenseBasicMoE(model_class, n=self.n)
+            moe_class = DenseBasicMoE
+
+        if args.dataset_type == 'cifar100':
+            return moe_class(model_class, n=self.n, num_classes=100)
+        else:
+            return moe_class(model_class, n=self.n)
     
     def predict_val(self, x):
         """
         Implements base class's abstract method.
         Predict for x during a validation step.
         """
-        return self.model(x)#[0]
+        if self.gated_predict:
+            return self.model(x)
+        else:
+            _, preds = self.model(x)
+            return torch.mean(nn.functional.softmax(torch.stack(preds, dim=0), dim=-1), dim=0), preds
     
     def predict_test(self, x):
         """
         Implements base class's abstract method.
         Predict for x during a testing step.
         """
-        return self.model(x)
+        if self.gated_predict:
+            return self.model(x)
+        else:
+            _, preds = self.model(x)
+            return torch.mean(nn.functional.softmax(torch.stack(preds, dim=0), dim=-1), dim=0), preds
 
     # actually I think for this one (end-to-end, implicit, simple weighted avg gating) there does not need to be any special steps
     # it can just happily fit into the framework of the single network training with an appropriately implmented network. 

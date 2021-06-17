@@ -9,7 +9,7 @@ DEFAULT_DICT = {'data_dir': '/scratch/gp491/data', 'dataset_type': 'mnist', 'cor
 'validation_fraction': 0.1, 'method': 'single', 'n': 5, 'model': 'lenet', 'reg_weight': 0.5, 
 'dropout': 0.5, 'scheduler': None, 'scheduler_step': 20, 'scheduler_rate': 0.1, 'batch_size': 250, 
 'epochs': 15, 'lr': 0.003, 'weight_decay': 0, 'cpu': False, 'checkpoint': False, 'num_workers': 0, 
-'reg_decay': 1, 'reg_min': 0}
+'reg_decay': 1, 'reg_min': 0, 'predict_gated': False, 'moe_type': 'dense'}
 
 
 class Configuration(object):
@@ -65,6 +65,13 @@ class Configuration(object):
                             help='Whether to train on the CPU. If ommited, will train on a GPU')
         parser.add_argument('--checkpoint', action='store_true', help='Whether to save chekpoints')
         parser.add_argument('--num-workers', type=int, default=0, help='Number of CPU cores to load data on')
+
+        # MoE specific config
+        parser.add_argument('--predict-gated', action='store_true', help='Wether a MoE model should use gating or a simple mean in predictions')
+        parser.add_argument('--moe-type', type=str, choices=['dense', 'fixed'], default='dense',
+                            help='Type of a MoE model. Dense uses a gating network to determine weights for averaging, fixed is a dummy with fixed allocatons.')
+        parser.add_argument('--moe-gating', type=str, choices=['same', 'simple'], default='same',
+                            help='Type of a gating network to use in a MoE model. Same sets the network to have the same architecture as experts. Simple will be an arbitrary MLP of dimensions I like.')    
 
         args = parser.parse_args()
         return Configuration(vars(args))
