@@ -17,6 +17,7 @@ class SimpleMoE(BaseTrainer):
         criterion = basic_cross_entropy
         self.n = args.n
         self.gated_predict = args.predict_gated
+        self.data_features = 32*32 if 'cifar' in args.dataset_type else 28*28
         super().__init__(args, criterion, device)
         self.val_criterion = basic_cross_entropy
 
@@ -28,6 +29,8 @@ class SimpleMoE(BaseTrainer):
             moe_class = DenseFixedMoE
         else:
             moe_class = DenseBasicMoE
+
+        same_gate = args.moe_gating == 'same'
 
         if args.dataset_type == 'cifar100':
             return moe_class(model_class, n=self.n, num_classes=100)

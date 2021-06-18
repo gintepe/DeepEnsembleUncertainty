@@ -9,7 +9,7 @@ DEFAULT_DICT = {'data_dir': '/scratch/gp491/data', 'dataset_type': 'mnist', 'cor
 'validation_fraction': 0.1, 'method': 'single', 'n': 5, 'model': 'lenet', 'reg_weight': 0.5, 
 'dropout': 0.5, 'scheduler': None, 'scheduler_step': 20, 'scheduler_rate': 0.1, 'batch_size': 250, 
 'epochs': 15, 'lr': 0.003, 'weight_decay': 0, 'cpu': False, 'checkpoint': False, 'num_workers': 0, 
-'reg_decay': 1, 'reg_min': 0, 'predict_gated': False, 'moe_type': 'dense'}
+'reg_decay': 1, 'reg_min': 0, 'predict_gated': False, 'moe_type': 'dense', 'moe_gating': 'same'}
 
 
 class Configuration(object):

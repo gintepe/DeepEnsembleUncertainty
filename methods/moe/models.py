@@ -4,12 +4,16 @@ import torch.nn.functional as F
 import torch.nn.init as init
 
 class DenseBasicMoE(nn.Module):
-    def __init__(self, network_class, n=5, **kwargs):
+    def __init__(self, network_class, same_gate=True, data_feat=28*28, n=5, **kwargs):
         super().__init__()
         self.experts = nn.ModuleList([network_class(**kwargs) for i in range(n)])
         #TODO this is not necessarily the best appproach, but for now sort of works since it takes the same input
         # overall it might make sense to have this be a simple MLP
-        self.gating_network = network_class(num_classes=n)
+        # for now it can be conditionally set to be a fixed MLP
+        if same_gate:
+            self.gating_network = network_class(num_classes=n)
+        else: 
+            self.gating_network = SimpleGate(in_feat=data_feat, out_feat=n)
 
     def forward(self, x):
         preds = [net(x) for net in self.experts]
@@ -23,18 +27,40 @@ class DenseBasicMoE(nn.Module):
         
         return combined_pred, preds
 
+class SimpleGate(nn.Module):
+    def __init__(self, in_feat, out_feat):
+        super().__init__()
+        self.gating_network = nn.Sequential(
+                                    nn.Linear(in_feat, 200), 
+                                    nn.ReLU, 
+                                    nn.Linear(200, out_feat)
+                                )
+    
+    def forward(self, x):
+        x = x.reshape(x.shape[0], -1)
+        out = gating_network(x)
+        return out
+
 
 class DenseFixedMoE(nn.Module):
-    def __init__(self, network_class, n=5, **kwargs):
+    def __init__(self, network_class, same_gate=True, data_feat=28*28, n=5, **kwargs):
         super().__init__()
         self.experts = nn.ModuleList([network_class(**kwargs) for i in range(n)])
-        self.gating_network = network_class(num_classes=n)
+        if same_gate:
+            self.gating_network = network_class(num_classes=n)
+        else: 
+            self.gating_network = SimpleGate(in_feat=data_feat, out_feat=n)
         for param in self.gating_network.parameters():
             param.requires_grad = False
 
     def forward(self, x):
         preds = [net(x) for net in self.experts]
         weights = nn.functional.softmax(self.gating_network(x), dim=-1)
+
+        # top 1 selection, no conditional compute
+        max_weights = torch.max(weights, dim=-1, keepdims=True)[0]
+        weights = torch.where(weights == max_weights, 1., 0.)
+
         combined_pred = torch.sum(
                             nn.functional.softmax(
                                 torch.stack(
