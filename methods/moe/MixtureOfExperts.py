@@ -27,25 +27,27 @@ class SimpleMoE(BaseTrainer):
         
         if args.moe_type == 'fixed':
             moe_class = DenseFixedMoE
+        elif args.moe_type == 'sparse':
+            moe_class = SparseMoE
         else:
             moe_class = DenseBasicMoE
 
         same_gate = args.moe_gating == 'same'
 
         if args.dataset_type == 'cifar100':
-            return moe_class(model_class, n=self.n, num_classes=100)
+            return moe_class(model_class, same_gate=same_gate, data_feat=self.data_features, n=self.n, k=args.moe_topk, num_classes=100)
         else:
-            return moe_class(model_class, n=self.n)
+            return moe_class(model_class, same_gate=same_gate, data_feat=self.data_features, n=self.n, k=args.moe_topk)
     
     def predict_val(self, x):
         """
         Implements base class's abstract method.
         Predict for x during a validation step.
         """
+        combined_pred, preds = self.model.forward_dense(x)
         if self.gated_predict:
-            return self.model(x)
+            return combined_pred, preds
         else:
-            _, preds = self.model(x)
             return torch.mean(nn.functional.softmax(torch.stack(preds, dim=0), dim=-1), dim=0), preds
     
     def predict_test(self, x):
@@ -53,10 +55,10 @@ class SimpleMoE(BaseTrainer):
         Implements base class's abstract method.
         Predict for x during a testing step.
         """
+        combined_pred, preds = self.model.forward_dense(x)
         if self.gated_predict:
-            return self.model(x)
+            return combined_pred, preds
         else:
-            _, preds = self.model(x)
             return torch.mean(nn.functional.softmax(torch.stack(preds, dim=0), dim=-1), dim=0), preds
 
     # actually I think for this one (end-to-end, implicit, simple weighted avg gating) there does not need to be any special steps

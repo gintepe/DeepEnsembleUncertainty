@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     args = Configuration.parse_cmd()
 
-    wandb.init(project=f'mphil-{args.dataset_type}', entity='gintepe', dir=constants.LOGGING_DIR)
+    wandb.init(project=f'mphil-{"mnist-moe" if args.dataset_type == "mnist" else args.dataset_type}', entity='gintepe', dir=constants.LOGGING_DIR)
     wandb.config.update(args)
 
     device = 'cuda' if (torch.cuda.is_available() and not args.cpu) else 'cpu'

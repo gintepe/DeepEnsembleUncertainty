@@ -223,6 +223,12 @@ class ResNet(nn.Module):
         out = self.layer2(out)
         out = self.layer3(out)
         out = F.avg_pool2d(out, out.size()[3])
-        out = out.view(out.size(0), -1)
+        if out.size(0) > 0:
+            out = out.view(out.size(0), -1)
+        else:
+            # print(out.shape)
+            out = out.flatten()
+            out = out.view(out.size(0), 64)
+            # print(out.shape)
         out = self.linear(out)
         return out
