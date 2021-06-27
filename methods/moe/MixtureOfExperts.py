@@ -9,15 +9,28 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+# TODO not all implemented models are currently compatible with the train function
+
 # TODO choices to be made: whether to average outputs or probabilities if using a fully end-to-end setup
 # for now doing a simple one with averaged probs
 class SimpleMoE(BaseTrainer):
+    """
+    Class implementing training and optimization for the mixture of experts paradigm 
+    """
     def __init__(self, args, device):
+        """
+        Initialise the trainer and network.
+        
+        Parameters
+        --------
+        - args (namespace): parsed command line arguments.
+        - device (torch.device or str): device to perform calculations on.
+        """
 
         criterion = basic_cross_entropy
         self.n = args.n
         self.gated_predict = args.predict_gated
-        self.data_features = 32*32 if 'cifar' in args.dataset_type else 28*28
+        self.data_features = 32*32*3 if 'cifar' in args.dataset_type else 28*28
         super().__init__(args, criterion, device)
         self.val_criterion = basic_cross_entropy
 
@@ -43,6 +56,9 @@ class SimpleMoE(BaseTrainer):
         """
         Implements base class's abstract method.
         Predict for x during a validation step.
+
+        Depending on the specification provided when initialising the model,
+        can adjust the prediction to use a non-gated, traditional ensemble approach.
         """
         combined_pred, preds = self.model.forward_dense(x)
         if self.gated_predict:
@@ -84,6 +100,9 @@ class SimpleMoE(BaseTrainer):
         correct = 0
         total = 0
 
+        loads = np.zeros(self.n)
+        loads_by_label = list([np.zeros(self.n) for i in range(10)])
+
         self.model.train()
         with tqdm(train_loader, unit="batch") as tepoch:
             for X, y in tepoch:
@@ -92,7 +111,7 @@ class SimpleMoE(BaseTrainer):
                 X, y = X.to(self.device), y.to(self.device)
 
                 # compute loss        
-                y_hat, preds = self.model(X)
+                y_hat, preds, batch_loads, batch_loads_by_label = self.model(X, labels=y)
                 loss = self.criterion(y_hat, y)
                 
                 # backpropogate
@@ -107,7 +126,21 @@ class SimpleMoE(BaseTrainer):
                 correct += (predicted == y).sum().item()
                 total += X.shape[0]
 
+                loads += batch_loads
+
+                if len(batch_loads_by_label) > 0:
+                    for i in range(10):
+                        loads_by_label[i] += batch_loads_by_label[i]
                 if log:
                     wandb.log({'Training/loss': loss, 'batch': batches})
         
+        wandb.log({"loads": wandb.Histogram(np_histogram=(loads, np.linspace(0, self.n, self.n + 1)))})
+        
+        if sum([np.sum(load_counts) for load_counts in loads_by_label]) > 0:
+            for i in range(10):
+                wandb.log({f"loads class {i}": wandb.Histogram(np_histogram=(loads_by_label[i], np.linspace(0, self.n, self.n + 1)))})
+                print(f'Loads for the epoch label {i}: {loads_by_label[i]}')
+        
+        print(f'Loads for the epoch: {loads}')
+
         return correct, total, batches    

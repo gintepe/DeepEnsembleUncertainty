@@ -1,5 +1,5 @@
 #!/bin/bash
-CUDA=0
+CUDA=1
 MODEL='lenet'
 MODEL1='mlp'
 
@@ -44,12 +44,12 @@ MODEL1='mlp'
 # CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-type sparse --moe-topk 2 --n 5
 # CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-type sparse --moe-topk 2 --n 10
 
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --predict-gated --moe-type sparse --moe-gating simple --n 5
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --predict-gated --moe-type dense --moe-gating simple --n 5
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --predict-gated --moe-topk 2 --moe-type sparse --moe-gating simple --n 5
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --predict-gated --moe-topk 2 --moe-type dense --moe-gating simple --n 5
+CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-type fixed --moe-gating simple --n 5 --moe-topk 2 
+# CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --predict-gated --moe-type dense --moe-gating simple --n 5
+# CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --predict-gated --moe-topk 2 --moe-type sparse --moe-gating simple --n 5
+# CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --predict-gated --moe-topk 2 --moe-type dense --moe-gating simple --n 5
 
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-type sparse --moe-gating simple --n 5
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-type dense --moe-gating simple --n 5
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-topk 2 --moe-type sparse --moe-gating simple --n 5
-CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-topk 2 --moe-type dense --moe-gating simple --n 5
+# CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-type sparse --moe-gating simple --n 5
+# CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-type dense --moe-gating simple --n 5
+# CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-topk 2 --moe-type sparse --moe-gating simple --n 5
+# CUDA_VISIBLE_DEVICES=$CUDA python main.py --lr 1e-4 --batch-size 128 --epochs 40  --corrupted-test --model $MODEL --checkpoint --optimizer adam --method moe --moe-topk 2 --moe-type dense --moe-gating simple --n 5
