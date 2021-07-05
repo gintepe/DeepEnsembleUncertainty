@@ -34,18 +34,18 @@ def disagreement_and_correctness(predictions, gt):
     return 0, 0, None
 
   counts = np.zeros((len(predictions), len(predictions)))
-  correct = 0
+  correct = np.zeros(len(predictions))
 
   for i, pred in enumerate(predictions):
     _, predicted = torch.max(pred, 1)
-    correct += (predicted == gt).sum().item()
+    correct[i] += (predicted == gt).sum().item()
     for j in range(i+1, len(predictions)):
       _, predicted_other = torch.max(predictions[j], 1)
       count = torch.sum(predicted != predicted_other).item()
       counts[i, j] += count
       counts[j, i] += count
 
-  return np.sum(counts)/(len(predictions)*(len(predictions) - 1)), correct/(len(predictions)), counts
+  return np.sum(counts)/(len(predictions)*(len(predictions) - 1)), correct.sum()/(len(predictions)), counts, correct
 
 # Additional metrics needed have default implementations:
 # * NLL for classification is equivalent to the cross entropy, commonly used as loss

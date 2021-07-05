@@ -212,25 +212,28 @@ def test_mnist(trainer, args, metric_dict, wandb_log=True):
         for i in np.arange(0, 181, 15):
             print(f'\nShift: {i}\n')
             test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensity=i, corruption='rotation')
-            acc, metric_res, _, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+            acc, metric_res, stat_tracker = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
             if wandb_log:
                 wandb.log({'Test/rotated accuracy': acc, 'shift': i})
                 for name, val in metric_res.items():
                     wandb.log({f'Test/rotated {name}': val, 'shift': i})
+                stat_tracker.log_statistics(prefix='Test/rotated', shift=i)
 
         for i in np.arange(0, 29, 2):
             print(f'\nShift: {i}\n')
             test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensity=i, corruption='shift')
-            acc, metric_res, _, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+            acc, metric_res, stat_tracker = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
             if wandb_log:
                 wandb.log({'Test/translated accuracy': acc, 'shift': i})
                 for name, val in metric_res.items():
                     wandb.log({f'Test/translated {name}': val, 'shift': i})
+                stat_tracker.log_statistics(prefix='Test/translated', shift=i)
+                
     else:
         test_loader = mnist.get_test_loader(args.data_dir, args.batch_size, corrupted=False)
-        acc, metric_res, _, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+        acc, metric_res, stat_tracker = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
         print(f'Testing\nAccuracy: {acc}')
 
 
@@ -253,22 +256,26 @@ def test_cifar(trainer, args, metric_dict, wandb_log=True):
     is_cifar10 = args.dataset_type == 'cifar10'
     
     test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=False, is_cifar10=is_cifar10)
-    acc, metric_res, _, _, _, _, _= trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+    acc, metric_res, stat_tracker = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
     if wandb_log and args.corrupted_test:
         wandb.log({'Test/corrupted accuracy': acc, 'intensity': 0})
         for name, val in metric_res.items():
             wandb.log({f'Test/corrupted {name}': val, 'intensity': 0})
+        stat_tracker.log_statistics(prefix='Test/corrupted', shift=0, shift_name='intensity')
+        
 
     print(f'Testing\nAccuracy: {acc}')
 
     if args.corrupted_test:
         for i in range(1, 6):
             test_loader = cifar10.get_test_loader(args.data_dir, args.batch_size, corrupted=True, intensities=[i], is_cifar10=is_cifar10)
-            acc, metric_res, _, _, _, _, _ = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
+            acc, metric_res, stat_tracker = trainer.test(test_loader=test_loader, metric_dict=metric_dict)
 
             if wandb_log:
                 wandb.log({'Test/corrupted accuracy': acc, 'intensity': i})
                 for name, val in metric_res.items():
                     wandb.log({f'Test/corrupted {name}': val, 'intensity': i})
+                stat_tracker.log_statistics(prefix='Test/corrupted', shift=i, shift_name='intensity')
+                
 

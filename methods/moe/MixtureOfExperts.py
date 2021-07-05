@@ -33,6 +33,7 @@ class SimpleMoE(BaseTrainer):
         self.data_features = 32*32*3 if 'cifar' in args.dataset_type else 28*28
         super().__init__(args, criterion, device)
         self.val_criterion = basic_cross_entropy
+        self.load_loss_coeff = args.reg_weight
 
     def get_model(self, args):
         """ Retrieves and initialises the relevant model as specified by args. """
@@ -45,12 +46,12 @@ class SimpleMoE(BaseTrainer):
         else:
             moe_class = DenseBasicMoE
 
-        same_gate = args.moe_gating == 'same'
-
         if args.dataset_type == 'cifar100':
-            return moe_class(model_class, same_gate=same_gate, data_feat=self.data_features, n=self.n, k=args.moe_topk, num_classes=100)
+            return moe_class(model_class, gate_type=args.moe_gating, data_feat=self.data_features, 
+                             n=self.n, k=args.moe_topk, dropout_p=args.dropout, num_classes=100)
         else:
-            return moe_class(model_class, same_gate=same_gate, data_feat=self.data_features, n=self.n, k=args.moe_topk)
+            return moe_class(model_class, gate_type=args.moe_gating, data_feat=self.data_features,
+                             n=self.n, k=args.moe_topk, dropout_p=args.dropout)
     
     def predict_val(self, x):
         """
@@ -111,8 +112,8 @@ class SimpleMoE(BaseTrainer):
                 X, y = X.to(self.device), y.to(self.device)
 
                 # compute loss        
-                y_hat, preds, batch_loads, batch_loads_by_label = self.model(X, labels=y)
-                loss = self.criterion(y_hat, y)
+                y_hat, preds, batch_loads, batch_loads_by_label, load_loss = self.model(X, labels=y, loss_coef=self.load_loss_coeff)
+                loss = self.criterion(y_hat, y) + load_loss
                 
                 # backpropogate
                 self.optimizer.zero_grad()

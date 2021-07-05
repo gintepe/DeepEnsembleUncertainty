@@ -27,7 +27,7 @@ class LeNet5MCDropout(nn.Module):
     [1]: Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner. Gradient-based learning applied  
          to document recognition. Proceedings of the IEEE, november 1998. 
     """
-    def __init__(self, dropout_p):
+    def __init__(self, dropout_p, out_features=10):
         """
         Initialises a LeNet network for MCDropout.
         
@@ -57,7 +57,7 @@ class LeNet5MCDropout(nn.Module):
             MCDropout(dropout_p),
             nn.Tanh(),
 
-            nn.Linear(in_features=84, out_features=10),
+            nn.Linear(in_features=84, out_features=out_features),
         )
 
     def forward(self, x):

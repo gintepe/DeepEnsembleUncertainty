@@ -3,52 +3,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
+import wandb
+from methods.mcdropout.models import MCDropout, LeNet5MCDropout
+from methods.moe.gate_models import get_gating_network
 
+LOSS_COEF=0
 
-class SimpleGate(nn.Module):
+def cv_squared(x):
+    """The squared coefficient of variation of a sample.
+    Useful as a loss to encourage a positive distribution to be more uniform.
+    Epsilons added for numerical stability.
+    Returns 0 for an empty Tensor.
+    Args:
+    x: a `Tensor`.
+    Returns:
+    a `Scalar`.
     """
-    A class implementing a simple MLP with a single hidden layer and ReLU activation.
-    Typically to be used as a simplified gating network alternative.
-    """
-    def __init__(self, in_feat, out_feat):
-        """
-        Initialises the network with a customised nummber of input and output features
-        Parameters
-        --------
-        - in_feat (int): number of input features.
-        - out_feat (int): number of output features.
-        """
-        super().__init__()
-        self.in_feat = in_feat
-        self.gating_network = nn.Sequential(
-                                    nn.Linear(in_feat, 200), 
-                                    nn.ReLU(), 
-                                    nn.Linear(200, out_feat)
-                                )
-        self.gating_network.apply(init_weights)
-    
-    def forward(self, x):
-        """
-        Compute gating probability logits for x, typically to be used to
-        compute probabilities over individual experts.
-        """
-        x = x.reshape(x.shape[0], self.in_feat)
-        out = self.gating_network(x)
-        return out
-
-# could amend this to be "or Conv layer" and have it the same as resnet init
-# could also be outsourced to the util file
-def init_weights(m):
-    """
-    Custom weight initialisation for module.
-    Parameters
-    ----------
-    - m (nn.Module): module to be initialised.
-    """
-    if isinstance(m, nn.Linear):
-        # nn.init.xavier_normal_(m.weight.data)
-        nn.init.kaiming_normal_(m.weight.data)
-        nn.init.normal_(m.bias.data)
+    eps = 1e-10
+    # if only num_experts = 1
+    if x.shape[0] == 1:
+        return torch.Tensor([0])
+    return x.float().var() / (x.float().mean()**2 + eps)
 
 
 class DenseBasicMoE(nn.Module):
@@ -56,14 +31,14 @@ class DenseBasicMoE(nn.Module):
     Class implementing a naiive approach for mixture of experts, with forward passes performed on all expert networks
     and gating applied afterwards. 
     """
-    def __init__(self, network_class, same_gate=True, data_feat=28*28, n=5, k=5, **kwargs):
+    def __init__(self, network_class, gate_type='same', data_feat=28*28, n=5, k=5, dropout_p=0.1, **kwargs):
         """
         Initialise the model.
 
         Parameters
         ----------
         - network_class (type): type of network to use in the ensemble.
-        - same_gate (bool): whether the gating network should use the same architecture as the experts, or a simplified one.
+        - gate_type (str): which gating network should be used.
         - data_feat (int): number of sample input features
         - n (int): number of experts
         - k (int): number of highest-weighted expert predictions to use. Here for compatability, irrelevant for the dense 
@@ -71,15 +46,13 @@ class DenseBasicMoE(nn.Module):
         """
         super().__init__()
         self.experts = nn.ModuleList([network_class(**kwargs) for i in range(n)])
+        self.n = n
         #TODO this is not necessarily the best appproach, but for now sort of works since it takes the same input
         # overall it might make sense to have this be a simple MLP
         # for now it can be conditionally set to be a fixed MLP
-        if same_gate:
-            self.gating_network = network_class(num_classes=n)
-        else: 
-            self.gating_network = SimpleGate(in_feat=data_feat, out_feat=n)
+        self.gating_network = get_gating_network(network_class, gate_type, data_feat, n, dropout_p)
 
-    def forward(self, x, labels=None):
+    def forward(self, x, labels=None, loss_coef=LOSS_COEF):
         """
         Compute combined and individual predictions for x.
         
@@ -100,9 +73,16 @@ class DenseBasicMoE(nn.Module):
           to 10 labels, for a mixture of experts classifying samples into more categories, only the 
           first 10 will be considered.
         """
-    
         preds = [net(x) for net in self.experts]
         weights = nn.functional.softmax(self.gating_network(x), dim=-1)
+
+        importance = weights.sum(0)
+        
+        loss = cv_squared(importance)# + cv_squared(load)
+        loss *= loss_coef
+
+
+
         combined_pred = torch.sum(
                             nn.functional.softmax(
                                 torch.stack(
@@ -110,9 +90,12 @@ class DenseBasicMoE(nn.Module):
                                 dim=-1) * torch.unsqueeze(weights.T, -1), 
                             dim=0)
         
-        part_sizes = (weights > 0).sum(0).cpu().numpy()
+        weight_mask = weights > 0.1
+        part_sizes = weight_mask.sum(0).cpu().numpy()
+        disp = SparseDispatcher(self.n, weight_mask, labels)
 
-        return combined_pred, preds, part_sizes, []
+
+        return combined_pred, preds, part_sizes, disp.part_sizes_by_label(), loss
 
     def forward_dense(self, x):
         """
@@ -126,14 +109,14 @@ class DenseFixedMoE(nn.Module):
     """
     Dense naiive mixture of experts with a non-trainable gating network. 
     """
-    def __init__(self, network_class, same_gate=True, data_feat=28*28, n=5, k=1, gate_by_class=True, **kwargs):
+    def __init__(self, network_class, gate_type='same', data_feat=28*28, n=5, k=1, dropout_p=0.1, gate_by_class=True, **kwargs):
         """
         Initialise the model.
 
         Parameters
         ----------
         - network_class (type): type of network to use in the ensemble.
-        - same_gate (bool): whether the gating network should use the same architecture as the experts, or a simplified one.
+        - gate_type (str): which gating network should be used.
         - data_feat (int): number of sample input features
         - n (int): number of experts
         - k (int): number of highest-weighted expert predictions to use.
@@ -144,10 +127,8 @@ class DenseFixedMoE(nn.Module):
         self.k = k
         self.n = n
         self.gate_by_class = gate_by_class
-        if same_gate:
-            self.gating_network = network_class(num_classes=n)
-        else: 
-            self.gating_network = SimpleGate(in_feat=data_feat, out_feat=n)
+        self.gating_network = get_gating_network(network_class, gate_type, data_feat, n, dropout_p)
+
         for param in self.gating_network.parameters():
             param.requires_grad = False
 
@@ -197,7 +178,7 @@ class DenseFixedMoE(nn.Module):
 
         disp = SparseDispatcher(self.n, weights, labels)
         
-        return combined_pred, preds, part_sizes, disp.part_sizes_by_label()
+        return combined_pred, preds, part_sizes, disp.part_sizes_by_label(), 0
     
     def forward_dense(self, x):
         """
@@ -234,14 +215,14 @@ class SparseMoE(nn.Module):
     For now with load balancing capabilities and probabilistic gating removed.
     """
 
-    def __init__(self,  network_class, same_gate=True, data_feat=28*28, n=5, k=4, **kwargs):
+    def __init__(self,  network_class, gate_type='same', data_feat=28*28, n=5, k=4, dropout_p=0.1, **kwargs):
         """
         Initialise the model.
 
         Parameters
         ----------
         - network_class (type): type of network to use in the ensemble.
-        - same_gate (bool): whether the gating network should use the same architecture as the experts, or a simplified one.
+        - gate_type (str): which gating network should be used.
         - data_feat (int): number of sample input features
         - n (int): number of experts
         - k (int): number of highest-weighted expert predictions to use.
@@ -256,10 +237,8 @@ class SparseMoE(nn.Module):
         
         # instantiate experts
         self.experts = nn.ModuleList([network_class(**kwargs) for i in range(n)])
-        if same_gate:
-            self.gating_network = network_class(num_classes=n)
-        else: 
-            self.gating_network = SimpleGate(in_feat=data_feat, out_feat=n)
+        self.gating_network = get_gating_network(network_class, gate_type, data_feat, n, dropout_p)
+
         # self.w_gate = nn.Parameter(torch.zeros(input_size, num_experts), requires_grad=True)
         # self.w_noise = nn.Parameter(torch.zeros(input_size, num_experts), requires_grad=True)
 
@@ -269,6 +248,14 @@ class SparseMoE(nn.Module):
 
         assert(self.k <= self.num_experts)
 
+
+    def custom_softmax(self, x):
+        # means = torch.mean(x, 1, keepdim=True)
+        x_exp = torch.exp(x)# - means)
+        # norm = x.clone().detach().sum(1, keepdims=True)
+        norm = x_exp.sum(1, keepdims=True)
+
+        return x_exp / norm
 
     def top_k_gating(self, x):
         """
@@ -285,44 +272,55 @@ class SparseMoE(nn.Module):
           which must sum to 1.
         """
         # ------------------------ original version with scatter used ---------------------------------        
-        gating_out = self.gating_network(x)
+        # gating_out = self.gating_network(x)
 
-        top_k_logits, top_k_indices = gating_out.topk(self.k, dim=-1)
-        # top_k_logits = top_logits[:, :self.k]
-        # top_k_indices = top_indices[:, :self.k]
+        # top_k_logits, top_k_indices = gating_out.topk(self.k, dim=-1)
+        # # top_k_logits = top_logits[:, :self.k]
+        # # top_k_indices = top_indices[:, :self.k]
 
-        top_k_gates = self.softmax(top_k_logits)
+        # wandb.log({"gating_out": wandb.Histogram(gating_out.detach().cpu())})
 
-        zeros = torch.zeros_like(gating_out, requires_grad=True)
+        # # top_k_gates = self.softmax(top_k_logits)
+        # # print((top_k_logits > 0).sum(), top_k_logits.max(), top_k_logits.min())
+        # top_k_gates = self.custom_softmax(top_k_logits)
+        # # print((top_k_gates > 0).sum(), (top_k_gates == 0).sum(), top_k_gates.min(), top_k_gates.max())
+        # # top_k_gates = top_k_logits
+
+        # zeros = torch.zeros_like(gating_out, requires_grad=True)
         
-        gates = zeros.scatter(1, top_k_indices, top_k_gates) #--- does not seem to work for backprop, at least for k=1
+        # gates = zeros.scatter(1, top_k_indices, top_k_gates) #--- does not seem to work for backprop, at least for k=1
         
-        # if self.noisy_gating and self.k < self.num_experts:
-        #     load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
-        # else:
-        #     load = self._gates_to_load(gates)
+        # # if self.noisy_gating and self.k < self.num_experts:
+        # #     load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
+        # # else:
+        #     # load = self._gates_to_load(gates)
 
         # ------------------------ version without the use of the scatter function ---------------------------------
         # ------------------------ uncomment the full thing to use ---------------------------------
         
-        # gating_out = self.gating_network(x)
-        # gating_out = self.softmax(gating_out)
+        gating_out = self.gating_network(x)
 
-        # top_k_logits, top_k_indices = gating_out.topk(self.k, dim=-1)
-        # zeros = torch.zeros_like(gating_out, requires_grad=True)
-        # factors = zeros.scatter(1, top_k_indices, 1)
+        wandb.log({"gating_out": wandb.Histogram(gating_out.detach().cpu())})
 
-        # # this will be problematic since the non-zero entries won't add up to 1
-        # gates = gating_out * factors
-        # # TODO figure out a replacement/different gating training
-        # # so we are using sum-to-one normalisation, not a softmax here because I can't figure out how to make the
-        # # latter not affect the zeros and their placement
-        # # despite this, the softmax was kind of needed to not have one of the top values be zero! 
-        # # let's try to put it back in at the start
-        # gates = gates / gates.sum(dim=-1, keepdims=True)
+        gating_out = self.softmax(gating_out)
 
+        top_k_logits, top_k_indices = gating_out.topk(self.k, dim=-1)
+        zeros = torch.zeros_like(gating_out, requires_grad=True)
+        factors = zeros.scatter(1, top_k_indices, 1)
 
-        return gates#, load
+        # this will be problematic since the non-zero entries won't add up to 1
+        gates = gating_out * factors
+        # TODO figure out a replacement/different gating training
+        # so we are using sum-to-one normalisation, not a softmax here because I can't figure out how to make the
+        # latter not affect the zeros and their placement
+        # despite this, the softmax was kind of needed to not have one of the top values be zero! 
+        # let's try to put it back in at the start
+        gates = gates / gates.sum(dim=-1, keepdims=True)
+
+        # -------------------- Returning load computation option
+        load = self._gates_to_load(gates)
+
+        return gates, load
 
     def forward_dense(self, x):
         """
@@ -341,7 +339,7 @@ class SparseMoE(nn.Module):
           the full network is not run here and they are not available.
         """
 
-        gates = self.top_k_gating(x)
+        gates, load = self.top_k_gating(x)
         preds = [net(x) for net in self.experts]
 
         combined_pred = torch.sum(
@@ -355,7 +353,7 @@ class SparseMoE(nn.Module):
 
 
 
-    def forward(self, x, train=True, loss_coef=1e-2, labels=None):
+    def forward(self, x, loss_coef=LOSS_COEF, labels=None):
         """
         Compute the combined prediction for x.
         
@@ -377,12 +375,13 @@ class SparseMoE(nn.Module):
           to 10 labels, for a mixture of experts classifying samples into more categories, only the 
           first 10 will be considered.
         """
-        gates = self.top_k_gating(x)
+        gates, load = self.top_k_gating(x)
+        
         # calculate importance loss
-        # importance = gates.sum(0)
+        importance = gates.sum(0)
         #
-        # loss = self.cv_squared(importance) + self.cv_squared(load)
-        # loss *= loss_coef
+        loss = cv_squared(importance) + cv_squared(load)
+        loss *= loss_coef
 
         # print((gates > 0).sum())
 
@@ -391,34 +390,18 @@ class SparseMoE(nn.Module):
         gates = dispatcher.expert_to_gates()
         expert_outputs = [self.experts[i](expert_inputs[i]) for i in range(self.num_experts)]
         y = dispatcher.combine(expert_outputs)
-        return y, None, np.array(dispatcher._part_sizes), dispatcher.part_sizes_by_label()
-
-    # def cv_squared(self, x):
-    #     """The squared coefficient of variation of a sample.
-    #     Useful as a loss to encourage a positive distribution to be more uniform.
-    #     Epsilons added for numerical stability.
-    #     Returns 0 for an empty Tensor.
-    #     Args:
-    #     x: a `Tensor`.
-    #     Returns:
-    #     a `Scalar`.
-    #     """
-    #     eps = 1e-10
-    #     # if only num_experts = 1
-    #     if x.shape[0] == 1:
-    #         return torch.Tensor([0])
-    #     return x.float().var() / (x.float().mean()**2 + eps)
+        return y, None, np.array(dispatcher._part_sizes), dispatcher.part_sizes_by_label(), loss
 
 
-    # def _gates_to_load(self, gates):
-    #     """Compute the true load per expert, given the gates.
-    #     The load is the number of examples for which the corresponding gate is >0.
-    #     Args:
-    #     gates: a `Tensor` of shape [batch_size, n]
-    #     Returns:
-    #     a float32 `Tensor` of shape [n]
-    #     """
-    #     return (gates > 0).sum(0)
+    def _gates_to_load(self, gates):
+        """Compute the true load per expert, given the gates.
+        The load is the number of examples for which the corresponding gate is >0.
+        Args:
+        gates: a `Tensor` of shape [batch_size, n]
+        Returns:
+        a float32 `Tensor` of shape [n]
+        """
+        return (gates > 0).sum(0)
 
     # def _prob_in_top_k(self, clean_values, noisy_values, noise_stddev, noisy_top_values):
     #     """Helper function to NoisyTopKGating.

@@ -205,7 +205,7 @@ class BaseTrainer():
                     correct += (predicted == y).sum().item()
                     cum_conf += confidence.sum().item()
 
-                    dis, avgc, _ = disagreement_and_correctness(preds, y)
+                    dis, avgc, _, _ = disagreement_and_correctness(preds, y)
                     avg_correct += avgc
                     disagreed += dis
 
@@ -343,10 +343,10 @@ class BaseTrainer():
           and average component accuracy are added to the required metrics returned here. For all 
           models, an everage confidence metric is added.
         - thresholded_accuracy (np.ndarray): an array containing accuracies of predictions with 
-          confidence over a corresponding threshold in the cinfidence_thresholds parameter.
+          confidence over a corresponding threshold in the confidence_thresholds parameter.
           None if the latter not supplied.
         - thresholded_counts (np.ndarray): an array containing counts of predictions with 
-          confidence over a corresponding threshold in the cinfidence_thresholds parameter.
+          confidence over a corresponding threshold in the confidence_thresholds parameter.
           None if the latter not supplied.
         - binned_entropy_counts (nd.array): histogram values for prediction entropy, corresponding 
           to bin edges supplied as the entropy_bans parameter. None if the latter not supplied. 
@@ -356,23 +356,8 @@ class BaseTrainer():
         """
 
         print('\nTesting')
-        cum_loss = 0
-        total = 0
-        correct = 0
-        avg_corr = 0
-        cum_conf = 0
-        disagreements = 0
-        disagreement_mat = np.zeros((self.n, self.n)) if track_full_disagreements else None
-        calibration_bins = None
-        calibration_hist_vals = None if calibration_hist_bins is None else np.zeros(calibration_hist_bins)
-        calibration_hist_counts = None if calibration_hist_bins is None else np.zeros(calibration_hist_bins)
 
-        thresholded_counts, thresholded_accuracy, binned_entropy_counts = None, None, None
-        if confidence_thresholds is not None:
-            thresholded_counts = np.zeros_like(confidence_thresholds)
-            thresholded_accuracy = np.zeros_like(confidence_thresholds)
-        if entropy_bins is not None:
-            binned_entropy_counts = np.zeros(entropy_bins.shape[0] - 1)
+        stat_tracker = StatisticsTracker(self.n, confidence_thresholds, entropy_bins, track_full_disagreements, calibration_hist_bins)
 
         self.model.to(self.device)  
         self.model.eval()
@@ -391,52 +376,129 @@ class BaseTrainer():
                         # assumes all metrics are mean-reduced
                         metric_accumulators[name] += metric_val * X.size(0)
 
-                    total += X.size(0)
+                    stat_tracker.update(y_hat, preds, y)
 
-                    confidence, predicted = torch.max(y_hat, 1)
-                    correct += (predicted == y).sum().item()
-                    cum_conf += confidence.sum().item()
-
-                    if confidence_thresholds is not None:
-                        t_acc, t_count = compute_accuracies_at_confidences(y.cpu().numpy(), y_hat.cpu().numpy(), confidence_thresholds)
-                        thresholded_accuracy += np.multiply(t_acc, t_count)
-                        thresholded_counts += t_count
-                    
-                    if entropy_bins is not None:
-                        t_entropy = scipy.stats.entropy(y_hat.cpu().numpy(), axis=1)
-                        binned_entropy_counts += np.histogram(t_entropy, entropy_bins)[0]
-
-                    dis, avgc, dis_mat = disagreement_and_correctness(preds, y)
-                    disagreements += dis
-                    avg_corr += avgc
-                    if track_full_disagreements:
-                        disagreement_mat += dis_mat
-
-                    if calibration_hist_bins is not None:
-                        bin_edges, accuracies, counts = bin_predictions_and_accuracies_multiclass(y_hat.cpu().numpy(), y.cpu().numpy(), calibration_hist_bins)
-                        calibration_bins = bin_edges
-                        calibration_hist_vals += np.multiply(accuracies, counts)
-                        calibration_hist_counts += counts
-
-            
-            if confidence_thresholds is not None:
-                thresholded_accuracy = thresholded_accuracy / thresholded_counts
-
-            if calibration_hist_bins is not None:
-                non_zero_counts = np.where(calibration_hist_counts > 0)
-                calibration_hist_vals[non_zero_counts] = calibration_hist_vals[non_zero_counts] / calibration_hist_counts[non_zero_counts]
+            correct = stat_tracker.correct
+            total = stat_tracker.total
 
             test_accuracy = correct/total
             print(f'Results: \nAccuracy: {test_accuracy}')
             for name, val in metric_accumulators.items():
                 metric_accumulators[name] = val/total
                 print(f'{name}: {metric_accumulators[name]}')
-            metric_accumulators['confidence'] = cum_conf / total
-            
-            if preds is not None:
-                metric_accumulators['disagreement'] = disagreements / total
-                metric_accumulators['component accuracy'] = avg_corr / total
-                if track_full_disagreements:
-                        disagreement_mat /= total
 
-        return test_accuracy, metric_accumulators, thresholded_accuracy, thresholded_counts, binned_entropy_counts, disagreement_mat, (calibration_hist_vals, calibration_bins)
+        return test_accuracy, metric_accumulators, stat_tracker
+
+class StatisticsTracker():
+    def __init__(self, n, 
+        confidence_thresholds=None, 
+        entropy_bins=None, 
+        track_full_disagreements=False,
+        calibration_hist_bins=None,
+        ):
+
+        self.is_multi_pred = False
+
+        self.track_calibration_histogram = calibration_hist_bins is not None
+        self.init_calibration_hist(calibration_hist_bins)
+        
+        self.track_thresholded_confidence = confidence_thresholds is not None
+        self.init_counts_acc_by_confidence(confidence_thresholds)
+
+        self.track_binned_entropy = entropy_bins is not None
+        self.init_binned_entropies(entropy_bins)
+
+        self.track_full_disagreements = track_full_disagreements
+        if self.track_full_disagreements:
+            self.disagreement_mat = np.zeros((n, n))
+            
+        self.total = 0
+        self.correct = 0
+
+        self.avg_corr = 0
+        self.cum_conf = 0
+        self.disagreements = 0
+        self.subnet_correct = np.zeros(n)
+
+    def update(self, y_hat, preds, y):
+        self.is_multi_pred = preds is not None
+
+        self.total += y.shape[0]
+        
+        confidence, predicted = torch.max(y_hat, 1)
+        self.correct += (predicted == y).sum().item()
+        self.cum_conf += confidence.sum().item()
+
+        dis, avgc, dis_mat, subc = disagreement_and_correctness(preds, y)
+        self.disagreements += dis
+        self.avg_corr += avgc
+        self.subnet_correct += subc
+        if self.track_full_disagreements:
+            self.disagreement_mat += dis_mat
+
+        self.update_binned_entropies(y)
+        self.update_calibration_hist(y_hat, y)
+        self.update_counts_acc_by_confidence(y_hat, y)
+
+    def log_statistics(self, prefix, shift, shift_name='shift'):
+        wandb.log({f'{prefix} confidence': self.cum_conf / self.total, shift_name: shift})
+    
+        if self.is_multi_pred:
+            wandb.log({f'{prefix} disagreement': self.disagreements / self.total, shift_name: shift})
+            wandb.log({f'{prefix} component accuracy': self.avg_corr / self.total, shift_name: shift})
+            for i in range(self.subnet_correct.shape[0]):
+                wandb.log({f'{prefix} subnet {i} accuracy': self.subnet_correct[i] / self.total, shift_name: shift})
+
+    def get_disagreement_mat(self):
+        return self.disagreement_mat / self.total
+
+    def init_binned_entropies(self, entropy_bins):
+        if self.track_binned_entropy:
+            self.entropy_bins = entropy_bins
+            self.binned_entropy_counts = np.zeros(entropy_bins.shape[0] - 1)
+
+    def update_binned_entropies(self, y):
+        if self.track_binned_entropy:
+            t_entropy = scipy.stats.entropy(y.cpu().numpy(), axis=1)
+            self.binned_entropy_counts += np.histogram(t_entropy, entropy_bins)[0]
+
+    def get_binned_entropies(self):
+        if self.track_binned_entropy:
+            return self.binned_entropy_counts
+
+    def init_calibration_hist(self, n_bins):
+        if self.track_calibration_histogram:
+            self.calibration_hist_bins = n_bins
+            self.calibration_hist_vals = np.zeros(n_bins)
+            self.calibration_hist_counts = np.zeros(n_bins)
+            self.calibration_bins = None
+
+    def update_calibration_hist(self, y_hat, y):
+        if self.track_calibration_histogram:
+            self.calibration_bins, accuracies, counts = bin_predictions_and_accuracies_multiclass(y_hat.cpu().numpy(), y.cpu().numpy(), self.calibration_hist_bins)
+            self.calibration_hist_vals += np.multiply(accuracies, counts)
+            self.calibration_hist_counts += counts
+
+    def get_calibration_hist(self):
+        if self.track_calibration_histogram:
+            non_zero_counts = np.where(self.calibration_hist_counts > 0)
+            calibration_hist_vals = self.calibration_hist_vals.copy()
+            calibration_hist_vals[non_zero_counts] = self.calibration_hist_vals[non_zero_counts] / self.calibration_hist_counts[non_zero_counts]
+            return (calibration_hist_vals, self.calibration_bins)
+
+    def init_counts_acc_by_confidence(self, confidence_thresholds):
+        if self.track_thresholded_confidence:
+            self.confidence_thresholds = confidence_thresholds
+            self.thresholded_counts = np.zeros_like(confidence_thresholds)
+            self.thresholded_accuracy = np.zeros_like(confidence_thresholds)
+    
+    def update_counts_acc_by_confidence(self, y_hat, y):
+        if self.track_thresholded_confidence:
+            t_acc, t_count = compute_accuracies_at_confidences(y.cpu().numpy(), y_hat.cpu().numpy(), self.confidence_thresholds)
+            self.thresholded_accuracy += np.multiply(t_acc, t_count)
+            self.thresholded_counts += t_count
+
+    def get_counts_acc_by_confidence(self):
+        if self.track_thresholded_confidence:
+            thresholded_accuracy = self.thresholded_accuracy / self.thresholded_counts
+            return thresholded_accuracy, self.thresholded_counts
