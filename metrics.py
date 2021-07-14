@@ -31,7 +31,7 @@ def disagreement_and_correctness(predictions, gt):
   """
   
   if predictions is None:
-    return 0, 0, None
+    return 0, 0, None, 0
 
   counts = np.zeros((len(predictions), len(predictions)))
   correct = np.zeros(len(predictions))

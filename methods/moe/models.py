@@ -34,6 +34,7 @@ class DenseBasicMoE(nn.Module):
     def __init__(self, network_class, gate_type='same', data_feat=28*28, n=5, k=5, dropout_p=0.1, **kwargs):
         """
         Initialise the model.
+        The gating network output should be a probability distribution weighting over the experts.
 
         Parameters
         ----------
@@ -47,9 +48,6 @@ class DenseBasicMoE(nn.Module):
         super().__init__()
         self.experts = nn.ModuleList([network_class(**kwargs) for i in range(n)])
         self.n = n
-        #TODO this is not necessarily the best appproach, but for now sort of works since it takes the same input
-        # overall it might make sense to have this be a simple MLP
-        # for now it can be conditionally set to be a fixed MLP
         self.gating_network = get_gating_network(network_class, gate_type, data_feat, n, dropout_p)
 
     def forward(self, x, labels=None, loss_coef=LOSS_COEF):
@@ -74,13 +72,14 @@ class DenseBasicMoE(nn.Module):
           first 10 will be considered.
         """
         preds = [net(x) for net in self.experts]
-        weights = nn.functional.softmax(self.gating_network(x), dim=-1)
+
+        # weights = nn.functional.softmax(self.gating_network(x), dim=-1)
+        weights = self.gating_network(x)
 
         importance = weights.sum(0)
         
         loss = cv_squared(importance)# + cv_squared(load)
         loss *= loss_coef
-
 
 
         combined_pred = torch.sum(
@@ -132,7 +131,7 @@ class DenseFixedMoE(nn.Module):
         for param in self.gating_network.parameters():
             param.requires_grad = False
 
-    def forward(self, x, labels=None):
+    def forward(self, x, labels=None, loss_coef=0):
         """
         Compute combined and individual predictions for x.
         
@@ -157,14 +156,15 @@ class DenseFixedMoE(nn.Module):
         if self.gate_by_class and labels is not None:
             weights = self.class_based_gating(labels)
         else:
-            weights = nn.functional.softmax(self.gating_network(x), dim=-1)
+            # weights = nn.functional.softmax(self.gating_network(x), dim=-1)
+            weights = self.gating_network(x)
             # top 1 selection, no conditional compute
             # max_weights = torch.max(weights, dim=-1, keepdims=True)[0]
             # weights = torch.where(weights == max_weights, 1., 0.)
 
-            top_k_weights, top_k_indices = weights.topk(self.k, dim=-1)
-            zeros = torch.zeros_like(weights, requires_grad=False)
-            weights = zeros.scatter(1, top_k_indices, 1/self.k)
+            # top_k_weights, top_k_indices = weights.topk(self.k, dim=-1)
+            # zeros = torch.zeros_like(weights, requires_grad=False)
+            # weights = zeros.scatter(1, top_k_indices, 1/self.k)
 
 
         combined_pred = torch.sum(
@@ -301,8 +301,9 @@ class SparseMoE(nn.Module):
         gating_out = self.gating_network(x)
 
         wandb.log({"gating_out": wandb.Histogram(gating_out.detach().cpu())})
-
-        gating_out = self.softmax(gating_out)
+        
+        # removed since gating out should be softmax'ed already
+        # gating_out = self.softmax(gating_out)
 
         top_k_logits, top_k_indices = gating_out.topk(self.k, dim=-1)
         zeros = torch.zeros_like(gating_out, requires_grad=True)
@@ -403,73 +404,6 @@ class SparseMoE(nn.Module):
         """
         return (gates > 0).sum(0)
 
-    # def _prob_in_top_k(self, clean_values, noisy_values, noise_stddev, noisy_top_values):
-    #     """Helper function to NoisyTopKGating.
-    #     Computes the probability that value is in top k, given different random noise.
-    #     This gives us a way of backpropagating from a loss that balances the number
-    #     of times each expert is in the top k experts per example.
-    #     In the case of no noise, pass in None for noise_stddev, and the result will
-    #     not be differentiable.
-    #     Args:
-    #     clean_values: a `Tensor` of shape [batch, n].
-    #     noisy_values: a `Tensor` of shape [batch, n].  Equal to clean values plus
-    #       normally distributed noise with standard deviation noise_stddev.
-    #     noise_stddev: a `Tensor` of shape [batch, n], or None
-    #     noisy_top_values: a `Tensor` of shape [batch, m].
-    #        "values" Output of tf.top_k(noisy_top_values, m).  m >= k+1
-    #     Returns:
-    #     a `Tensor` of shape [batch, n].
-    #     """
-
-    #     batch = clean_values.size(0)
-    #     m = noisy_top_values.size(1)
-    #     top_values_flat = noisy_top_values.flatten()
-    #     threshold_positions_if_in = torch.arange(batch) * m + self.k
-    #     threshold_if_in = torch.unsqueeze(torch.gather(top_values_flat, 0, threshold_positions_if_in), 1)
-    #     is_in = torch.gt(noisy_values, threshold_if_in)
-    #     threshold_positions_if_out = threshold_positions_if_in - 1
-    #     threshold_if_out = torch.unsqueeze(torch.gather(top_values_flat,0 , threshold_positions_if_out), 1)
-    #     # is each value currently in the top k.
-    #     prob_if_in = self.normal.cdf((clean_values - threshold_if_in)/noise_stddev)
-    #     prob_if_out = self.normal.cdf((clean_values - threshold_if_out)/noise_stddev)
-    #     prob = torch.where(is_in, prob_if_in, prob_if_out)
-    #     return prob
-
-
-    # def noisy_top_k_gating(self, x, train, noise_epsilon=1e-2):
-    #     """Noisy top-k gating.
-    #       See paper: https://arxiv.org/abs/1701.06538.
-    #       Args:
-    #         x: input Tensor with shape [batch_size, input_size]
-    #         train: a boolean - we only add noise at training time.
-    #         noise_epsilon: a float
-    #       Returns:
-    #         gates: a Tensor with shape [batch_size, num_experts]
-    #         load: a Tensor with shape [num_experts]
-    #     """
-    #     clean_logits = x @ self.w_gate
-    #     if self.noisy_gating:
-    #         raw_noise_stddev = x @ self.w_noise
-    #         noise_stddev = ((self.softplus(raw_noise_stddev) + noise_epsilon) * train)
-    #         noisy_logits = clean_logits + ( torch.randn_like(clean_logits) * noise_stddev)
-    #         logits = noisy_logits
-    #     else:
-    #         logits = clean_logits
-
-    #     # calculate topk + 1 that will be needed for the noisy gates
-    #     top_logits, top_indices = logits.topk(min(self.k + 1, self.num_experts), dim=1)
-    #     top_k_logits = top_logits[:, :self.k]
-    #     top_k_indices = top_indices[:, :self.k]
-    #     top_k_gates = self.softmax(top_k_logits)
-
-    #     zeros = torch.zeros_like(logits, requires_grad=True)
-    #     gates = zeros.scatter(1, top_k_indices, top_k_gates)
-
-    #     if self.noisy_gating and self.k < self.num_experts:
-    #         load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
-    #     else:
-    #         load = self._gates_to_load(gates)
-    #     return gates, load
 
 class SparseDispatcher(object):
     """

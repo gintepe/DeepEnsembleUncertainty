@@ -135,11 +135,13 @@ class SimpleMoE(BaseTrainer):
                 if log:
                     wandb.log({'Training/loss': loss, 'batch': batches})
         
-        wandb.log({"loads": wandb.Histogram(np_histogram=(loads, np.linspace(0, self.n, self.n + 1)))})
+        if log:
+            wandb.log({"loads": wandb.Histogram(np_histogram=(loads, np.linspace(0, self.n, self.n + 1)))})
         
         if sum([np.sum(load_counts) for load_counts in loads_by_label]) > 0:
             for i in range(10):
-                wandb.log({f"loads class {i}": wandb.Histogram(np_histogram=(loads_by_label[i], np.linspace(0, self.n, self.n + 1)))})
+                if log:
+                    wandb.log({f"loads class {i}": wandb.Histogram(np_histogram=(loads_by_label[i], np.linspace(0, self.n, self.n + 1)))})
                 print(f'Loads for the epoch label {i}: {loads_by_label[i]}')
         
         print(f'Loads for the epoch: {loads}')

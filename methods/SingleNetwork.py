@@ -22,6 +22,7 @@ class SingleNetwork(BaseTrainer):
         criterion = nn.CrossEntropyLoss()
         super().__init__(args, criterion, device)
         self.val_criterion = basic_cross_entropy
+        self.n=1
 
     def get_model(self, args):
         """

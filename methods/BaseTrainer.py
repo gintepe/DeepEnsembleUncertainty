@@ -436,7 +436,7 @@ class StatisticsTracker():
         if self.track_full_disagreements:
             self.disagreement_mat += dis_mat
 
-        self.update_binned_entropies(y)
+        self.update_binned_entropies(y_hat)
         self.update_calibration_hist(y_hat, y)
         self.update_counts_acc_by_confidence(y_hat, y)
 
@@ -460,7 +460,7 @@ class StatisticsTracker():
     def update_binned_entropies(self, y):
         if self.track_binned_entropy:
             t_entropy = scipy.stats.entropy(y.cpu().numpy(), axis=1)
-            self.binned_entropy_counts += np.histogram(t_entropy, entropy_bins)[0]
+            self.binned_entropy_counts += np.histogram(t_entropy, self.entropy_bins)[0]
 
     def get_binned_entropies(self):
         if self.track_binned_entropy:

@@ -10,7 +10,7 @@ DEFAULT_DICT = {'data_dir': '/scratch/gp491/data', 'dataset_type': 'mnist', 'cor
 'dropout': 0.5, 'optimizer': 'adam', 'scheduler': None, 'scheduler_step': 20, 'scheduler_rate': 0.1, 
 'batch_size': 250, 'epochs': 15, 'lr': 0.003, 'weight_decay': 0, 'cpu': False, 'checkpoint': False, 
 'num_workers': 0, 'reg_decay': 1, 'reg_min': 0, 'predict_gated': False, 'moe_type': 'dense', 'moe_gating': 'same',
-'moe_topk': 1}
+'moe_topk': 1, 'gating_laplace': False, 'laplace_precision': None, 'entropy_threshold': None}
 
 
 class Configuration(object):
@@ -71,9 +71,12 @@ class Configuration(object):
         parser.add_argument('--predict-gated', action='store_true', help='Wether a MoE model should use gating or a simple mean in predictions')
         parser.add_argument('--moe-type', type=str, choices=['dense', 'fixed', 'sparse'], default='dense',
                             help='Type of a MoE model. Dense uses a gating network to determine weights for averaging, fixed is a dummy with fixed allocatons.')
-        parser.add_argument('--moe-gating', type=str, choices=['same', 'simple', 'mcd_simple', 'mcdc_simple', 'mcd_lenet'], default='same',
+        parser.add_argument('--moe-gating', type=str, choices=['same', 'simple', 'mcd_simple', 'mcdc_simple', 'mcd_lenet', 'conv'], default='same',
                             help='Type of a gating network to use in a MoE model. Same sets the network to have the same architecture as experts. Simple will be an arbitrary MLP of dimensions I like.')    
         parser.add_argument('--moe-topk', type=int, default=1, help='For hard (sparse and fixed) MoE gating, the number of experts to use')
+        parser.add_argument('--gating-laplace', action='store_true', help='whether the run should use post-hoc laplace prroximation for the gating network')
+        parser.add_argument('--laplace-precision', type=float, default=None, help='Prior precision for the Laplace approximation. If None, willl be fitted.')
+        parser.add_argument('--entropy-threshold', type=float, default=None, help='if present, will use uniform gating on samples with gating output entropy above the threshold')
         args = parser.parse_args()
         return Configuration(vars(args))
 
