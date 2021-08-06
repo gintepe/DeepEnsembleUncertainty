@@ -51,25 +51,38 @@ class BaseTrainer():
             # opt = optim.AdamW(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         else:
             print('SGD optimizer')
-            opt = optim.SGD(self.model.parameters(), lr=0.1, weight_decay=1e-4, momentum=0.9)
+            opt = optim.SGD(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9)
         return opt
     
-    # TODO: find a nicer way to incorporate schedulers
     def get_schedulers(self, args):
         """
         Initialise a learning rate scheduler as specified by args.
         """
 
-        if args.scheduler == 'step':
-            return [torch.optim.lr_scheduler.StepLR(self.optimizer, args.scheduler_step, gamma = args.scheduler_rate)]
-            # return [torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[90, 135], gamma=args.scheduler_rate)]
-        elif args.scheduler == 'exp':
-            return [torch.optim.lr_scheduler.ExponentialLR(self.optimizer, args.scheduler_rate) ]
-        elif args.scheduler == 'multistep':
-            print('using multistep scheduler')
-            return [torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[90, 135], gamma=args.scheduler_rate)]
+        scheduler = self.get_scheduler(self.optimizer, args.scheduler, args.scheduler_step, args.scheduler_rate)
+
+        if scheduler is not None:
+            return [scheduler]
         else:
             return []
+
+    def get_scheduler(self, optimizer, sched_type, step, rate):
+        if sched_type == 'step':
+            return torch.optim.lr_scheduler.StepLR(optimizer, step, gamma = rate)
+            # return [torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[90, 135], gamma=args.scheduler_rate)]
+        elif sched_type == 'exp':
+            return torch.optim.lr_scheduler.ExponentialLR(optimizer, rate) 
+        elif sched_type == 'multistep':
+            print('using multistep scheduler')
+            return torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[90, 135], gamma=rate)
+        elif sched_type == 'multistep-ext':
+            print('using extended multistep scheduler')
+            return torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[120, 180], gamma=rate)
+        elif sched_type == 'multistep-adam':
+            print('using extended, paper copied, multistep scheduler')
+            return torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[80, 120, 160, 180], gamma=rate)
+        else:
+            return None
 
 
     # TODO the following should probably always be the same 
@@ -272,6 +285,7 @@ class BaseTrainer():
             train_loader,
             val_loader,
             epochs,
+            early_stop_threshold=None,
             log=True,):
 
         """
@@ -288,16 +302,31 @@ class BaseTrainer():
         # print(self.schedulers[0])
         batches = 0
 
+        # we will call this large enough
+        min_val_loss = 1e7
+        no_val_improvement = 0
+
         self.model.to(self.device)
         
-        if log:
-            wandb.watch(self.model)
+        # if log:
+        #     wandb.watch(self.model)
         
         for epoch in range(1, epochs + 1):
             print(f'Epoch {epoch}')
             
             correct, total, batches = self.train(train_loader, batches, log)
             val_loss, val_acc, val_conf, val_avg_acc, val_dis = self.validate(val_loader)
+
+            # logic for early stopping
+            if early_stop_threshold is not None:
+                if min_val_loss > val_loss:
+                    min_val_loss = val_loss
+                    no_val_improvement = 0
+                else:
+                    no_val_improvement += 1
+
+                if no_val_improvement > early_stop_threshold:
+                    break
 
             if log:
                 self.log_info(correct/total, val_loss, val_acc, val_conf, val_avg_acc, val_dis, batches, epoch)
@@ -446,7 +475,7 @@ class StatisticsTracker():
         if self.is_multi_pred:
             wandb.log({f'{prefix} disagreement': self.disagreements / self.total, shift_name: shift})
             wandb.log({f'{prefix} component accuracy': self.avg_corr / self.total, shift_name: shift})
-            for i in range(self.subnet_correct.shape[0]):
+            for i in range(min(self.subnet_correct.shape[0], 5)):
                 wandb.log({f'{prefix} subnet {i} accuracy': self.subnet_correct[i] / self.total, shift_name: shift})
 
     def get_disagreement_mat(self):

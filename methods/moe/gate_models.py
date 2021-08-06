@@ -7,7 +7,7 @@ import wandb
 from methods.mcdropout.models import MCDropout, LeNet5MCDropout
 import scipy
 
-MC_SAMPLES=30
+MC_SAMPLES=50
 
 class MCDLeNetGate(nn.Module):
     """
@@ -75,8 +75,9 @@ class SimpleConvGate(nn.Module):
         """
         super().__init__()
         print('Using a simple convolutional gate')
+        self.is_mnist = img_size == 28
         self.feature_extractor = nn.Sequential(
-                                    nn.Conv2d(1, 16, 3),
+                                    nn.Conv2d(1 if self.is_mnist else 3, 16, 3),
                                     nn.ReLU(),
                                     nn.MaxPool2d(2, 2),
                                     nn.Conv2d(16, 32, 3),
@@ -86,7 +87,7 @@ class SimpleConvGate(nn.Module):
                                     nn.ReLU(),
                                     nn.MaxPool2d(2, 2),
                                 )
-        if img_size == 28:
+        if self.is_mnist:
             self.classifier = nn.Sequential(nn.BatchNorm1d(32),
                                         nn.Linear(32, out_feat)
                                         )
@@ -106,6 +107,69 @@ class SimpleConvGate(nn.Module):
         out = self.classifier(x)
         
         return out
+
+class SimpleConvMCDGate(nn.Module):
+    """
+    A class implementing a simple convolutional network with dropout after every layer.
+    Typically to be used as a simplified gating network alternative.
+    """
+    def __init__(self, img_size=28, out_feat=5, p=0.1):
+        """
+        Initialises the network with a customised nummber of input and output features
+        Parameters
+        --------
+        - in_feat (int): number of input features.
+        - out_feat (int): number of output features.
+        """
+        super().__init__()
+        print('Using a simple convolutional gate')
+        self.is_mnist = img_size == 28
+        self.feature_extractor = nn.Sequential(
+                                    nn.Conv2d(1 if self.is_mnist else 3, 16, 3),
+                                    MCDropout(p=p),
+                                    nn.ReLU(),
+                                    nn.MaxPool2d(2, 2),
+                                    nn.Conv2d(16, 32, 3),
+                                    MCDropout(p=p),
+                                    nn.ReLU(),
+                                    nn.MaxPool2d(2, 2),
+                                    nn.Conv2d(32, 32, 3),
+                                    MCDropout(p=p),
+                                    nn.ReLU(),
+                                    nn.MaxPool2d(2, 2),
+                                )
+        if self.is_mnist:
+            self.classifier = nn.Sequential(nn.BatchNorm1d(32),
+                                        nn.Linear(32, out_feat),
+                                        nn.Softmax()
+                                        )
+        else:
+            self.classifier = nn.Sequential(nn.BatchNorm1d(128),
+                                        nn.Linear(128, out_feat),
+                                        nn.Softmax()
+                                        )
+    
+    def base_forward(self, x):
+        x = self.feature_extractor(x)
+        x = x.reshape(x.shape[0], -1)
+        out = self.classifier(x)
+    
+        return out
+
+    def mc_forward(self, x):
+        preds = [self.base_forward(x) for i in range(MC_SAMPLES)]
+        combined_pred = torch.mean(torch.stack(preds.copy(), dim=0), dim=0)
+        return combined_pred
+
+    def forward(self, x):
+        """
+        Compute gating probability logits for x, typically to be used to
+        compute probabilities over individual experts.
+        """
+        if self.training:
+            return self.base_forward(x)
+        else:
+            return self.mc_forward(x)
 
 class SimpleMCDropGate(nn.Module):
     """
@@ -375,6 +439,8 @@ def get_gating_network(network_class, gate_type, data_feat, n, dropout_p=0.1):
         return SimpleMCDropConnectGate(in_feat=data_feat, out_feat=n, p=dropout_p)
     if gate_type == 'mcd_lenet':
         return MCDLeNetGate(dropout_p=dropout_p, out_feat=n)
+    if gate_type == 'mcd_conv':
+        return SimpleConvMCDGate(img_size = int(np.sqrt(data_feat)), out_feat=n, p=dropout_p)
     if gate_type == 'conv':
         return GateWrapper(SimpleConvGate(img_size = int(np.sqrt(data_feat)), out_feat=n))
     else: 

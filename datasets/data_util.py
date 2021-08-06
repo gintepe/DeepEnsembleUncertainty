@@ -25,7 +25,7 @@ def get_train_valid_loader(data_dir,
                            dataset,
                            valid_size=0.1,
                            shuffle=True,
-                           num_workers=4,
+                           num_workers=0,
                            pin_memory=False):
     """
     Utility function for loading and returning train and validation

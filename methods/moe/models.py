@@ -7,7 +7,6 @@ import wandb
 from methods.mcdropout.models import MCDropout, LeNet5MCDropout
 from methods.moe.gate_models import get_gating_network
 
-LOSS_COEF=0
 
 def cv_squared(x):
     """The squared coefficient of variation of a sample.
@@ -50,7 +49,7 @@ class DenseBasicMoE(nn.Module):
         self.n = n
         self.gating_network = get_gating_network(network_class, gate_type, data_feat, n, dropout_p)
 
-    def forward(self, x, labels=None, loss_coef=LOSS_COEF):
+    def forward(self, x, labels=None, loss_coef=0):
         """
         Compute combined and individual predictions for x.
         
@@ -81,26 +80,37 @@ class DenseBasicMoE(nn.Module):
         loss = cv_squared(importance)# + cv_squared(load)
         loss *= loss_coef
 
-
+        #TODO return to averaging probs
         combined_pred = torch.sum(
                             nn.functional.softmax(
                                 torch.stack(
                                     preds, dim=0), 
                                 dim=-1) * torch.unsqueeze(weights.T, -1), 
                             dim=0)
+
+        # combined_pred = torch.sum(
+        #                     nn.functional.log_softmax(
+        #                         torch.stack(
+        #                             preds, dim=0), 
+        #                         dim=-1).exp() * torch.unsqueeze(weights.T, -1), 
+        #                     dim=0).log()
+
+        # combined_pred = torch.sum(torch.stack(preds, dim=0) * torch.unsqueeze(weights.T, -1), dim=0)
         
         weight_mask = weights > 0.1
         part_sizes = weight_mask.sum(0).cpu().numpy()
         disp = SparseDispatcher(self.n, weight_mask, labels)
 
 
-        return combined_pred, preds, part_sizes, disp.part_sizes_by_label(), loss
+        return combined_pred, preds, part_sizes, disp.part_sizes_by_label(), loss, weights
 
     def forward_dense(self, x):
         """
         Compute combined and individual predictions for x.
         """
         out = self.forward(x)
+        #TODO put back as just returning it
+        # return torch.nn.functional.softmax(out[0], dim=-1), out[1]
         return out[0], out[1]
 
 
@@ -152,6 +162,7 @@ class DenseFixedMoE(nn.Module):
           first 10 will be considered.
         """
         preds = [net(x) for net in self.experts]
+        # print(preds)
         
         if self.gate_by_class and labels is not None:
             weights = self.class_based_gating(labels)
@@ -173,12 +184,20 @@ class DenseFixedMoE(nn.Module):
                                     preds, dim=0), 
                                 dim=-1) * torch.unsqueeze(weights.T, -1), 
                             dim=0)
+        # combined_pred = torch.sum(torch.stack(preds, dim=0) * torch.unsqueeze(weights.T, -1), dim=0)
+
+        # combined_pred = torch.sum(
+        #                     nn.functional.log_softmax(
+        #                         torch.stack(
+        #                             preds, dim=0), 
+        #                         dim=-1).exp() * torch.unsqueeze(weights.T, -1), 
+        #                     dim=0).log()
 
         part_sizes = (weights > 0).sum(0).cpu().numpy()
 
         disp = SparseDispatcher(self.n, weights, labels)
         
-        return combined_pred, preds, part_sizes, disp.part_sizes_by_label(), 0
+        return combined_pred, preds, part_sizes, disp.part_sizes_by_label(), 0, weights
     
     def forward_dense(self, x):
         """
@@ -189,7 +208,7 @@ class DenseFixedMoE(nn.Module):
 
     def class_based_gating(self, ys, prob_class_gated=0.95):
         """
-        Compute gating weights for a fixed, ground-truth class-based assongment.
+        Compute gating weights for a fixed, ground-truth class-based assignment.
 
         Currently done by assigning the expert indices ass class_label modulo number_of_experts.
         """
@@ -202,6 +221,11 @@ class DenseFixedMoE(nn.Module):
             return weights
             
 
+class DenseClassFixedMoE(DenseFixedMoE):
+    def __init__(self, network_class, gate_type='same', data_feat=28*28, n=5, k=1, dropout_p=0.1, **kwargs):
+        super().__init__(network_class, gate_type, data_feat, n, k, dropout_p, True, **kwargs)
+
+        # def forward(self,x, labels, loss_coef)
 
 ################### Sparse Implementation ###################################
 # Based on David Rau's repository @ https://github.com/davidmrau/mixture-of-experts/ 
@@ -309,13 +333,7 @@ class SparseMoE(nn.Module):
         zeros = torch.zeros_like(gating_out, requires_grad=True)
         factors = zeros.scatter(1, top_k_indices, 1)
 
-        # this will be problematic since the non-zero entries won't add up to 1
         gates = gating_out * factors
-        # TODO figure out a replacement/different gating training
-        # so we are using sum-to-one normalisation, not a softmax here because I can't figure out how to make the
-        # latter not affect the zeros and their placement
-        # despite this, the softmax was kind of needed to not have one of the top values be zero! 
-        # let's try to put it back in at the start
         gates = gates / gates.sum(dim=-1, keepdims=True)
 
         # -------------------- Returning load computation option
@@ -354,7 +372,7 @@ class SparseMoE(nn.Module):
 
 
 
-    def forward(self, x, loss_coef=LOSS_COEF, labels=None):
+    def forward(self, x, labels=None, loss_coef=0):
         """
         Compute the combined prediction for x.
         
@@ -391,7 +409,7 @@ class SparseMoE(nn.Module):
         gates = dispatcher.expert_to_gates()
         expert_outputs = [self.experts[i](expert_inputs[i]) for i in range(self.num_experts)]
         y = dispatcher.combine(expert_outputs)
-        return y, None, np.array(dispatcher._part_sizes), dispatcher.part_sizes_by_label(), loss
+        return y, None, np.array(dispatcher._part_sizes), dispatcher.part_sizes_by_label(), loss, weights
 
 
     def _gates_to_load(self, gates):

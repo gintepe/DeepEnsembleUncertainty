@@ -174,7 +174,7 @@ def laplacify_gating(
                  subset_of_weights='last_layer', 
                  hessian_structure='full')
     
-    gate_train_loader = get_adjusted_loader(model, train_loader, device=device)
+    gate_train_loader = get_adjusted_loader(model.experts, train_loader, device=device)
 
     print('fitting')
     t1 = time()
@@ -183,7 +183,7 @@ def laplacify_gating(
     print(f'Fitting time: {t2 - t1}')
 
     if optimize_precision:
-        gate_val_loader = get_adjusted_loader(model, val_loader, device=device)
+        gate_val_loader = get_adjusted_loader(model.experts, val_loader, device=device)
         t1 = time()
         print(f'Val label construction time: {t1 - t2}')
 
@@ -195,68 +195,65 @@ def laplacify_gating(
     wrapped_model = DenseLaplaceWrapper(model, la_gate, gate_by_entropy, entropy_threshold)
     return wrapped_model
 
-def get_adjusted_loader(moe_model, loader, device='cpu'):
+def get_adjusted_loader(model_list, loader, device='cpu', return_original=False):
     """
     Transforms an orginal dataloader used for training by changing the labels to be useful for the gting network in isolation.
     
     Parameters
     ----------
-    - moe_model (nn.Module): original trained MoE model
+    - model_list (nn.ModuleList): original trained MoE model experts
     - laoder (torch.util.data.DataLoader): original dataloader 
     - device (str): cpu or cuda, where to perform the computations.
     """
-    wrapped_dataset = WrapperDataset(loader.dataset, moe_model, device=device)
+    wrapped_dataset = WrapperDataset(loader.dataset, model_list, device=device, return_orig=return_original)
     # assumes a sampler is used
     return DataLoader(wrapped_dataset, loader.batch_size, sampler=loader.sampler)
 
-# quite inefficient, would be better to do it in a batched way
-# TODO THE LAPLACE LIB DOES NOT SUPPORT SOFT LABELS
-# or more like the torch framework does not support soft labels for some reason....
-def get_soft_label(moe_model, sample, gt):
+def get_soft_label(model_list, sample, gt):
     # compute individual negated losses for the experts
     # nagation allows higher values to signify more desireble options, compatable with softmax
-    neg_losses = -1 * torch.Tensor([F.cross_entropy(net(sample.unsqueeze(0)), gt) for net in moe_model.experts])
+    neg_losses = -1 * torch.Tensor([F.cross_entropy(net(sample.unsqueeze(0)), gt) for net in model_list])
     soft_label = F.softmax(neg_losses, dim=-1)
 
     return soft_label
 
-def get_label(moe_model, sample, gt):
+def get_label(model_list, sample, gt):
     """
     Computes a proxy label to be used for a gating network of the given MoE model by choosing the subnetwork 
     with the lowest individual loss as the ground truth. Assumes a cross-entropy loss can be used for the experts.
     """
-    neg_losses = torch.stack([F.cross_entropy(net(sample), gt, reduction='none') for net in moe_model.experts], dim=1)
+    neg_losses = torch.stack([F.cross_entropy(net(sample), gt, reduction='none') for net in model_list], dim=1)
     val, label = torch.min(neg_losses, dim=-1)
 
     return label
 
 class WrapperDataset(Dataset):
-    def __init__(self, orig_dataset, model, device='cpu'):
+    def __init__(self, orig_dataset, models, device='cpu', return_orig=False):
         """
         Set up a wrapper dataset that will supply the same samples as the original, but with adjusted labels.
 
         Parameters
         ----------
         - orig_dataset (torch.util.data.Dataset): original dataset
-        - model (nn.Module): original trained MoE model
+        - models (nn.ModuleList): original trained MoE model experts
         - la_gating (Laplace.BaseLaplace): gating network with the Laplace Approximation applied
         - device (str): cpu or cuda, where to perform the computations.
         """
         self.original = orig_dataset
-        self.model = model
-        self.model.to(device)
-        self.precompute_labels = precompute_labels
-        if self.precompute_labels:
-            self.new_labels = self.get_all_labels(device)
+        self.models = models
+        self.models.to(device)
+        self.new_labels = self.get_all_labels(device)
+        self.return_original = return_orig
 
     def get_all_labels(self, device='cpu'):
         """ Compute all the adjusted labels based on the model's outputs """
         loader = DataLoader(self.original, batch_size=3000, shuffle=False)
         label_list = []
-        for X, y in loader:
-            X, y = X.to(device), y.to(device)
-            labels = get_label(self.model, X, y)
-            label_list.append(labels)
+        with torch.no_grad():
+            for X, y in loader:
+                X, y = X.to(device), y.to(device)
+                labels = get_label(self.models, X, y)
+                label_list.append(labels)
 
         return torch.cat(label_list)
 
@@ -268,4 +265,7 @@ class WrapperDataset(Dataset):
         sample, original_label = self.original[idx]
         new_label = self.new_labels[idx]
         
+        if self.return_original:
+            return sample, original_label, new_label
+
         return sample, new_label

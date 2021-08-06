@@ -176,8 +176,8 @@ class TranslatedMNISTTest(Dataset):
         
         if self.translation > 0:
             translated_img = np.zeros_like(img)
-            translated_img[:-1*self.translation, :, :] = img[self.translation:, :, :]
-            translated_img[-1*self.translation:, :, :] = img[:self.translation, :, :]
+            translated_img[:, :-1*self.translation, :] = img[:, self.translation:, :]
+            translated_img[:, -1*self.translation:, :] = img[:, :self.translation, :]
         else:
             translated_img = img
 

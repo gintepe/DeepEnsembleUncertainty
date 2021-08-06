@@ -12,6 +12,20 @@ import numpy as np
 import torch
 import scipy
 
+def ensemble_criterion(gating_out, preds, combined_pred, gt, gate_gt=None):
+    return basic_cross_entropy(combined_pred, gt)
+
+def loss_sum_criterion(gating_out, preds, combined_pred, gt, gate_gt=None):
+    losses = torch.stack([torch.nn.functional.cross_entropy(pred, gt, reduction='none') for pred in preds], dim=1)
+    losses = losses * gating_out
+    return losses.sum() / gating_out.shape[0]
+
+def logsumexp_loss_criterion(weights, preds, combined_pred, gt, gate_gt=None):
+    neg_losses = -1 * torch.stack([torch.nn.functional.cross_entropy(pred, gt, reduction='none') for pred in preds], dim=1)
+    # print(neg_losses)
+    losses = -1 * torch.logsumexp(neg_losses, -1) 
+    # print(losses)
+    return losses.sum() / weights.shape[0]
 
 def disagreement_and_correctness(predictions, gt):
   """
@@ -57,6 +71,13 @@ def basic_cross_entropy(probs, gt):
   """
   nll = torch.nn.NLLLoss()
   return nll(torch.log(probs), gt)
+
+def softXEnt (probs, target):
+  """
+  Implements cross entropy loss, for raw probability values and soft targets
+  """
+  logprobs = torch.log(probs) #.log_softmax (input, dim = 1)
+  return  -(target * logprobs).sum() / probs.shape[0]
 
 def wrap_ece(bins):
   """ convenience wrapper for the ECE computation when bins are fixed """

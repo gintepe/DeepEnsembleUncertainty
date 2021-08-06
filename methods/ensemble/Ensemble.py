@@ -72,12 +72,7 @@ class BaseEnsemble(BaseTrainer):
         
         schedulers = []
         for i in range(self.n):
-            if args.scheduler == 'step':
-                sched = optim.lr_scheduler.StepLR(self.optimizer[i], args.scheduler_step, gamma = args.scheduler_rate)
-            elif args.scheduler == 'exp':
-                sched = optim.lr_scheduler.ExponentialLR(self.optimizer[i], args.scheduler_rate) 
-            else:
-                sched = torch.optim.lr_scheduler.MultiStepLR(self.optimizer[i], milestones=[90, 135], gamma=args.scheduler_rate)
+            sched = self.get_scheduler(self.optimizer[i], args.scheduler, args.scheduler_step, args.scheduler_rate)
             schedulers.append(sched)
         return schedulers
 

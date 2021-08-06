@@ -16,7 +16,7 @@ def get_cifar_train_valid_loader(data_dir,
                            random_seed,
                            valid_size=0.1,
                            shuffle=True,
-                           num_workers=4,
+                           num_workers=0,
                            pin_memory=False,
                            is_cifar10=True):
     """
