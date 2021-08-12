@@ -1,5 +1,5 @@
 absl-py==0.12.0
-aiohttp==3.7.4.post0
+aiohttp>=3.7.4
 async-timeout==3.0.1
 attrs==20.3.0
 cachetools==4.2.1
@@ -35,7 +35,7 @@ pyasn1-modules==0.2.8
 pyparsing==2.4.7
 python-dateutil==2.8.1
 pytorch-lightning==1.2.10
-PyYAML==5.3.1
+PyYAML>=5.4
 requests==2.25.1
 requests-oauthlib==1.3.0
 rsa==4.7.2
@@ -55,7 +55,7 @@ torchmetrics==0.2.0
 torchvision==0.9.1
 tqdm==4.60.0
 typing-extensions==3.7.4.3
-urllib3==1.26.4
+urllib3>=1.26.5
 wandb==0.10.27
 Werkzeug==1.0.1
 yarl==1.6.3
