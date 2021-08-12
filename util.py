@@ -205,17 +205,17 @@ def get_train_and_val_loaders(dataset_type, data_dir, batch_size, val_fraction, 
 def test(trainer, args, metric_dict, wandb_log=True, save_dir=None, val_loader=None, moe_pred_toggle=None):
     if args.detailed_eval:
         if args.dataset_type == 'mnist':
-            test_mnist(trainer, args, metric_dict, save_dir=save_dir, val_loader=val_loader, moe_pred_toggle=moe_pred_toggle)
+            test_mnist(trainer, args, metric_dict, save_dir=save_dir, val_loader=val_loader, moe_pred_toggle=moe_pred_toggle, wandb_log=wandb_log)
         if 'cifar' in args.dataset_type:
             # for logging
-            test_cifar(trainer, args, metric_dict, moe_pred_toggle=moe_pred_toggle)
+            test_cifar(trainer, args, metric_dict, moe_pred_toggle=moe_pred_toggle, wandb_log=wandb_log)
             # for detailed eval
             test_cifar_detailed(trainer, args, save_dir=save_dir, val_loader=val_loader, moe_pred_toggle=moe_pred_toggle)
     else:
         if args.dataset_type == 'mnist':
-            test_mnist(trainer, args, metric_dict)
+            test_mnist(trainer, args, metric_dict, wandb_log=wandb_log)
         if 'cifar' in args.dataset_type:
-            test_cifar(trainer, args, metric_dict)
+            test_cifar(trainer, args, metric_dict, wandb_log=wandb_log)
 
 def test_mnist(trainer, args, metric_dict, wandb_log=True, save_dir=None, val_loader=None, moe_pred_toggle=None):
     """

@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 import wandb
-from methods.mcdropout.models import MCDropout, LeNet5MCDropout
+from methods.mcdropout.models import MCDropout, LeNet5MCDropout, ResNetMCDropout
 import scipy
 
 MC_SAMPLES=50
@@ -24,6 +24,23 @@ class MCDLeNetGate(nn.Module):
         else:
             out, preds = self.gating_network.mc_predict(x, n_samples=MC_SAMPLES)
             return out
+
+class MCDResNetGate(nn.Module):
+    """
+    A class wrapping the LeNet5MCDropout class to be used as a gating network.
+    """
+    def __init__(self, dropout_p, out_feat):
+        super().__init__()
+        self.gating_network = ResNetMCDropout(dropout_p, num_classes=out_feat)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x):
+        if self.training:
+            return self.softmax(self.gating_network(x))
+        else:
+            out, preds = self.gating_network.mc_predict(x, n_samples=MC_SAMPLES)
+            return out
+
 
 class SimpleGate(nn.Module):
     """
@@ -439,6 +456,8 @@ def get_gating_network(network_class, gate_type, data_feat, n, dropout_p=0.1):
         return SimpleMCDropConnectGate(in_feat=data_feat, out_feat=n, p=dropout_p)
     if gate_type == 'mcd_lenet':
         return MCDLeNetGate(dropout_p=dropout_p, out_feat=n)
+    if gate_type == 'mcd_resnet':
+        return MCDResNetGate(dropout_p=dropout_p, out_feat=n)
     if gate_type == 'mcd_conv':
         return SimpleConvMCDGate(img_size = int(np.sqrt(data_feat)), out_feat=n, p=dropout_p)
     if gate_type == 'conv':

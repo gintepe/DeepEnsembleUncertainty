@@ -314,10 +314,6 @@ class SparseMoE(nn.Module):
         
         # gates = zeros.scatter(1, top_k_indices, top_k_gates) #--- does not seem to work for backprop, at least for k=1
         
-        # # if self.noisy_gating and self.k < self.num_experts:
-        # #     load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
-        # # else:
-        #     # load = self._gates_to_load(gates)
 
         # ------------------------ version without the use of the scatter function ---------------------------------
         # ------------------------ uncomment the full thing to use ---------------------------------
@@ -409,7 +405,7 @@ class SparseMoE(nn.Module):
         gates = dispatcher.expert_to_gates()
         expert_outputs = [self.experts[i](expert_inputs[i]) for i in range(self.num_experts)]
         y = dispatcher.combine(expert_outputs)
-        return y, None, np.array(dispatcher._part_sizes), dispatcher.part_sizes_by_label(), loss, weights
+        return y, None, np.array(dispatcher._part_sizes), dispatcher.part_sizes_by_label(), loss, gates
 
 
     def _gates_to_load(self, gates):

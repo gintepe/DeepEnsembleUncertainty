@@ -83,7 +83,7 @@ class Configuration(object):
         parser.add_argument('--predict-gated', action='store_true', help='Wether a MoE model should use gating or a simple mean in predictions')
         parser.add_argument('--moe-type', type=str, choices=['dense', 'fixed', 'fixed-class', 'sparse'], default='dense',
                             help='Type of a MoE model. Dense uses a gating network to determine weights for averaging, fixed is a dummy with fixed allocatons.')
-        parser.add_argument('--moe-gating', type=str, choices=['same', 'simple', 'mcd_simple', 'mcdc_simple', 'mcd_lenet', 'mcd_conv', 'conv'], default='same',
+        parser.add_argument('--moe-gating', type=str, choices=['same', 'simple', 'mcd_simple', 'mcdc_simple', 'mcd_lenet', 'mcd_conv', 'conv', 'mcd_resnet'], default='same',
                             help='Type of a gating network to use in a MoE model. Same sets the network to have the same architecture as experts. Simple will be an arbitrary MLP of dimensions I like.')    
         parser.add_argument('--moe-topk', type=int, default=1, help='For hard (sparse and fixed) MoE gating, the number of experts to use')
         parser.add_argument('--gating-laplace', action='store_true', help='whether the run should use post-hoc laplace prroximation for the gating network')

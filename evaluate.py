@@ -102,6 +102,7 @@ def eval(args):
             if args.log:
                 model_args.laplace_precision = prec
                 project_name = f'mphil-{"mnist-moe" if model_args.dataset_type == "mnist" else model_args.dataset_type}-laplace'
+                project_name = project_name if args.project is None else args.project
                 wandb.init(project=project_name, entity='gintepe', dir=constants.LOGGING_DIR)
                 wandb.config.update(model_args)
 
@@ -153,10 +154,10 @@ def eval(args):
 
         model_args.moe_toggle = args.toggle_moe_at
 
-        # if model_args.dataset_type == 'mnist':
-        #     test_mnist(trainer, model_args, metric_dict)
-        # if 'cifar' in model_args.dataset_type:
-        #     test_cifar(trainer, model_args, metric_dict)    
+        if model_args.dataset_type == 'mnist':
+            test_mnist(trainer, model_args, metric_dict)
+        if 'cifar' in model_args.dataset_type:
+            test_cifar(trainer, model_args, metric_dict)    
 
         if args.log:
             wandb.config.update(model_args)
