@@ -5,6 +5,16 @@ This repository contains a documented and extendable framework for experimenting
 
 Parts of the code are based on the repositories [here](https://github.com/google-research/google-research/tree/master/uq_benchmark_2019) and [here](https://github.com/davidmrau/mixture-of-experts/), with references also included in the files affected.
 
+### Methods Available
+
+The repository offers implementations of ResNet-20 and LeNet5 network architectures as well as a simple feed-forward neural network, as well as version of the same architectures with dropout layers instrted after each non-final convolutional of fully-connected layer to choose from as base predictors.
+
+They can be used in several different "methods". First, we provide implementations of well-established baseline methods. The first of these is training the base predictor as a stand-alone predictor by standard MAP training (`single` for the `--method` argument). The second option trains an n-member deep ensemble, using sequential forward and backward passes for the individual predictors (`ensemble`). The third method is MC Dropout, where networks are trained with dropout layers inserted after each non-final layer and a set dropout probability. Predictions are then made by keeping dropout enabled and averaging the results of n forward passes (`mcdrop`).
+
+We also provide implementations of diversity-regularised deep ensemble variations. The first of these uses negative correlation learning with a set scaling parameter (`ncensemble`). The second method uses scaled mean pairwise cross entrypy between ensemble members as a regularisation term (`ceensemble`).
+
+Lastly, implementations for end-to-end mixture of experts training are provided. The experts use the specified base predictor architecture, while the gating network can be chosen separately from a simple MLP, small convolutional network, and the same architecture as is used for the experts. Mixtures of experts can either be trained using a single optimiser for all components (`moe`) or using one optimiser for the experts and a separate one for the gating network (`moe2step`), with epochs involving two distinct passes over the training data - one to train the experts, followed by one to train only the gating network. 3 distinct loss functions can be used to train mixtures of experts: ensemble loss - cross-entropy using the combined prediction, sum loss - using a sum of individual losses weighted by the gating output, or log-sum-exp - using this function to approximate the minimum individual loss. The latter does not use gating weights in its computation and thus should only be used in conjunction with the 2-step training procedure.
+
 ### Usage
 As the codebase was produced first and foremost for an MPhil project, it is focused on enabling full experiments to be run in an easy and customisable way. The entry point for neural network training is `main.py`
 
