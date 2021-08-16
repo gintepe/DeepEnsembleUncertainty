@@ -4,8 +4,9 @@ import os
 import pprint
 import torch
 import pathlib
+import constants
 
-DEFAULT_DICT = {'data_dir': '/scratch/gp491/data', 'dataset_type': 'mnist', 'corrupted_test': False,
+DEFAULT_DICT = {'log':True, 'user':None, 'data_dir': constants.DATA_DIR, 'dataset_type': 'mnist', 'corrupted_test': False,
 'validation_fraction': 0.1, 'method': 'single', 'n': 5, 'model': 'lenet', 'reg_weight': 0.5, 
 'dropout': 0.5, 'optimizer': 'adam', 'scheduler': None, 'scheduler_step': 20, 'scheduler_rate': 0.1, 
 'batch_size': 128, 'epochs': 15, 'lr': 0.003, 'weight_decay': 0, 'cpu': False, 'checkpoint': False, 
@@ -29,11 +30,12 @@ class Configuration(object):
     @staticmethod
     def parse_cmd():
         parser = argparse.ArgumentParser(description='Train a configurable ensemble on a given dataset.')
-        parser.add_argument('--project', type=str, default=None,
-                            help='Project name for logging')
+        parser.add_argument('--log', action='store_true', help='Whether to log training statistics to wandb')
+        parser.add_argument('--project', type=str, default=None, help='Project name for logging')
+        parser.add_argument('--user', type=str, default=None, help='User name for logging')
 
         # data config
-        parser.add_argument('--data-dir', type=str, default='/scratch/gp491/data',
+        parser.add_argument('--data-dir', type=str, default=constants.DATA_DIR,
                             help='Directory the relevant datasets can be found in')
         parser.add_argument('--dataset-type', type=str, default='mnist',
                             choices=['cifar10', 'cifar100', 'mnist'], help='Dataset name')
@@ -67,9 +69,9 @@ class Configuration(object):
         parser.add_argument('--scheduler-rate', type=float, default=0.1)
         parser.add_argument('--optimizer', type=str, choices=['adam', 'sgd'], default='adam',
                             help='which optimizer to use. SGD will default to momentum of 0.9')
-        parser.add_argument('--batch-size', type=int, default=250, help='Batch size to use in training')
-        parser.add_argument('--epochs', type=int, default=15, help='Maximum number of epochs to train for')
-        parser.add_argument('--lr', type=float, default=3e-3, help='Initial learning rate')
+        parser.add_argument('--batch-size', type=int, default=128, help='Batch size to use in training')
+        parser.add_argument('--epochs', type=int, default=100, help='Maximum number of epochs to train for')
+        parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate')
         parser.add_argument('--weight-decay', type=float, default=0, help='Weight regularisation penalty')
         parser.add_argument('--cpu', action='store_true',
                             help='Whether to train on the CPU. If ommited, will train on a GPU')
@@ -89,7 +91,6 @@ class Configuration(object):
         parser.add_argument('--gating-laplace', action='store_true', help='whether the run should use post-hoc laplace prroximation for the gating network')
         parser.add_argument('--laplace-precision', type=float, default=None, help='Prior precision for the Laplace approximation. If None, willl be fitted.')
         parser.add_argument('--entropy-threshold', type=float, default=None, help='if present, will use uniform gating on samples with gating output entropy above the threshold')
-        # parser.add_argument('--moe-sum-loss', action='store_true', help='If present, MoE models will use a weighted sum of individual losses, rather than ensemble loss')
         parser.add_argument('--moe-loss', type=str, default='ens', choices=['ens', 'sum', 'lsexp'], help='Type of training loss to use for MoE models (expert step if 2-step training used).')
         args = parser.parse_args()
         return Configuration(vars(args))

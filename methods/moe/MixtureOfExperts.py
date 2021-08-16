@@ -121,10 +121,6 @@ class SimpleMoE(BaseTrainer):
                 y_hat, preds, batch_loads, batch_loads_by_label, load_loss, weights = self.model(X, labels=y, loss_coef=self.load_loss_coeff)
                 
                 loss = self.criterion(weights, preds, y_hat, y) + load_loss
-
-                # if torch.isnan(loss):
-                #     print(self.criterion)
-                #     print(y_hat)#, preds)
                 
                 # backpropogate
                 self.optimizer.zero_grad()
@@ -183,7 +179,6 @@ class TwoStepMoE(SimpleMoE):
         if args.optimizer == 'adam':
             opt_gate = optim.Adam(self.model.gating_network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
             opt_exp = optim.Adam(self.model.experts.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-            # opt = optim.AdamW(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         else:
             print('SGD optimizer')
             opt_gate = optim.SGD(self.model.gating_network.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9)

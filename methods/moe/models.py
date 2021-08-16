@@ -19,7 +19,6 @@ def cv_squared(x):
     a `Scalar`.
     """
     eps = 1e-10
-    # if only num_experts = 1
     if x.shape[0] == 1:
         return torch.Tensor([0])
     return x.float().var() / (x.float().mean()**2 + eps)
@@ -72,7 +71,6 @@ class DenseBasicMoE(nn.Module):
         """
         preds = [net(x) for net in self.experts]
 
-        # weights = nn.functional.softmax(self.gating_network(x), dim=-1)
         weights = self.gating_network(x)
 
         importance = weights.sum(0)
@@ -80,22 +78,12 @@ class DenseBasicMoE(nn.Module):
         loss = cv_squared(importance)# + cv_squared(load)
         loss *= loss_coef
 
-        #TODO return to averaging probs
         combined_pred = torch.sum(
                             nn.functional.softmax(
                                 torch.stack(
                                     preds, dim=0), 
                                 dim=-1) * torch.unsqueeze(weights.T, -1), 
                             dim=0)
-
-        # combined_pred = torch.sum(
-        #                     nn.functional.log_softmax(
-        #                         torch.stack(
-        #                             preds, dim=0), 
-        #                         dim=-1).exp() * torch.unsqueeze(weights.T, -1), 
-        #                     dim=0).log()
-
-        # combined_pred = torch.sum(torch.stack(preds, dim=0) * torch.unsqueeze(weights.T, -1), dim=0)
         
         weight_mask = weights > 0.1
         part_sizes = weight_mask.sum(0).cpu().numpy()
@@ -109,8 +97,6 @@ class DenseBasicMoE(nn.Module):
         Compute combined and individual predictions for x.
         """
         out = self.forward(x)
-        #TODO put back as just returning it
-        # return torch.nn.functional.softmax(out[0], dim=-1), out[1]
         return out[0], out[1]
 
 
@@ -162,20 +148,11 @@ class DenseFixedMoE(nn.Module):
           first 10 will be considered.
         """
         preds = [net(x) for net in self.experts]
-        # print(preds)
         
         if self.gate_by_class and labels is not None:
             weights = self.class_based_gating(labels)
         else:
-            # weights = nn.functional.softmax(self.gating_network(x), dim=-1)
             weights = self.gating_network(x)
-            # top 1 selection, no conditional compute
-            # max_weights = torch.max(weights, dim=-1, keepdims=True)[0]
-            # weights = torch.where(weights == max_weights, 1., 0.)
-
-            # top_k_weights, top_k_indices = weights.topk(self.k, dim=-1)
-            # zeros = torch.zeros_like(weights, requires_grad=False)
-            # weights = zeros.scatter(1, top_k_indices, 1/self.k)
 
 
         combined_pred = torch.sum(
@@ -184,14 +161,6 @@ class DenseFixedMoE(nn.Module):
                                     preds, dim=0), 
                                 dim=-1) * torch.unsqueeze(weights.T, -1), 
                             dim=0)
-        # combined_pred = torch.sum(torch.stack(preds, dim=0) * torch.unsqueeze(weights.T, -1), dim=0)
-
-        # combined_pred = torch.sum(
-        #                     nn.functional.log_softmax(
-        #                         torch.stack(
-        #                             preds, dim=0), 
-        #                         dim=-1).exp() * torch.unsqueeze(weights.T, -1), 
-        #                     dim=0).log()
 
         part_sizes = (weights > 0).sum(0).cpu().numpy()
 
@@ -224,8 +193,6 @@ class DenseFixedMoE(nn.Module):
 class DenseClassFixedMoE(DenseFixedMoE):
     def __init__(self, network_class, gate_type='same', data_feat=28*28, n=5, k=1, dropout_p=0.1, **kwargs):
         super().__init__(network_class, gate_type, data_feat, n, k, dropout_p, True, **kwargs)
-
-        # def forward(self,x, labels, loss_coef)
 
 ################### Sparse Implementation ###################################
 # Based on David Rau's repository @ https://github.com/davidmrau/mixture-of-experts/ 
@@ -263,20 +230,15 @@ class SparseMoE(nn.Module):
         self.experts = nn.ModuleList([network_class(**kwargs) for i in range(n)])
         self.gating_network = get_gating_network(network_class, gate_type, data_feat, n, dropout_p)
 
-        # self.w_gate = nn.Parameter(torch.zeros(input_size, num_experts), requires_grad=True)
-        # self.w_noise = nn.Parameter(torch.zeros(input_size, num_experts), requires_grad=True)
-
         self.softplus = nn.Softplus()
         self.softmax = nn.Softmax(1)
-        # self.normal = Normal(torch.tensor([0.0]), torch.tensor([1.0]))
 
         assert(self.k <= self.num_experts)
 
 
     def custom_softmax(self, x):
-        # means = torch.mean(x, 1, keepdim=True)
-        x_exp = torch.exp(x)# - means)
-        # norm = x.clone().detach().sum(1, keepdims=True)
+        means = torch.mean(x, 1, keepdim=True)
+        x_exp = torch.exp(x - means)
         norm = x_exp.sum(1, keepdims=True)
 
         return x_exp / norm
@@ -394,11 +356,9 @@ class SparseMoE(nn.Module):
         
         # calculate importance loss
         importance = gates.sum(0)
-        #
+        
         loss = cv_squared(importance) + cv_squared(load)
         loss *= loss_coef
-
-        # print((gates > 0).sum())
 
         dispatcher = SparseDispatcher(self.num_experts, gates, labels)
         expert_inputs = dispatcher.dispatch(x)
@@ -465,7 +425,6 @@ class SparseDispatcher(object):
         self._batch_index = sorted_experts[index_sorted_experts[:, 1],0]
         # calculate num samples that each expert gets
         self._part_sizes = list((gates > 0).sum(0).cpu().numpy())
-        # print(self._part_sizes)
         # expand gates to match with self._batch_index
         gates_exp = gates[self._batch_index.flatten()]
         self._nonzero_gates = torch.gather(gates_exp, 1, self._expert_index)
@@ -493,7 +452,6 @@ class SparseDispatcher(object):
           a list of `num_experts` `Tensor`s with shapes
             `[expert_batch_size_i, <extra_input_dims>]`.
         """
-        # should work-as is
 
         # assigns samples to experts whose gate is nonzero
 
@@ -515,16 +473,8 @@ class SparseDispatcher(object):
         Returns:
           a `Tensor` with shape `[batch_size, <extra_output_dims>]`.
         """
-        # this one probably needs a bit more change since the log/non-log space thing is questionable
-        # though I suppose it makes sense if we are working under the assumption that the final activation 
-        # will be a softmax --- softmax if just normalizing for sum-to-one in exp space, what happens if 
-        # we sum things in exp space before?
 
-
-        # apply exp to expert outputs, so we are not longer in log space
-        # stitched = torch.cat(expert_out, 0).exp()
-
-        # softmax instead
+        # softmax 
         stitched = nn.functional.softmax(torch.cat(expert_out, 0), dim=-1)
 
         if multiply_by_gates:
@@ -532,12 +482,6 @@ class SparseDispatcher(object):
         zeros = torch.zeros(self._gates.size(0), expert_out[-1].size(1), requires_grad=True).to(stitched.device)
         # combine samples that have been processed by the same k experts
         combined = zeros.index_add(0, self._batch_index, stitched.float())
-        
-        # ---- for now removed to use probability averaging ----
-        # add eps to all zero values in order to avoid nans when going back to log space
-        # combined[combined == 0] = np.finfo(float).eps
-        # back to log space
-        # return combined.log()
 
         return combined
 

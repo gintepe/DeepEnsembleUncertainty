@@ -12,6 +12,6 @@ CIFAR_STD = [0.229, 0.224, 0.225]
 MNIST_MEAN = (0.1307,)
 MNIST_STD = (0.3081,)
 
-DATA_DIR = '/scratch/gp491/data'
-LOGGING_DIR = '/scratch/gp491/wandb'
+DATA_DIR = 'data'
+LOGGING_DIR = 'wandb'
 CHECKPOINT_DIR = f'{LOGGING_DIR}/checkpoints'

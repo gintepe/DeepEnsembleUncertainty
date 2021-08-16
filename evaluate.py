@@ -103,7 +103,7 @@ def eval(args):
                 model_args.laplace_precision = prec
                 project_name = f'mphil-{"mnist-moe" if model_args.dataset_type == "mnist" else model_args.dataset_type}-laplace'
                 project_name = project_name if args.project is None else args.project
-                wandb.init(project=project_name, entity='gintepe', dir=constants.LOGGING_DIR)
+                wandb.init(project=project_name, entity=args.user, dir=constants.LOGGING_DIR)
                 wandb.config.update(model_args)
 
             print(f'Testing model.\nPrecision used: {prec}')
@@ -123,9 +123,9 @@ def eval(args):
             project_name = f'mphil-{"mnist-moe" if model_args.dataset_type == "mnist" else model_args.dataset_type}' if model_args.project is None else model_args.project
             project_name = project_name if args.project is None else args.project
             if args.run_id is not None:
-                wandb.init(id=args.run_id, project=project_name, entity='gintepe', dir=constants.LOGGING_DIR, resume='allow')
+                wandb.init(id=args.run_id, project=project_name, entity=args.user, dir=constants.LOGGING_DIR, resume='allow')
             else:
-                wandb.init(project=project_name, entity='gintepe', dir=constants.LOGGING_DIR)
+                wandb.init(project=project_name, entity=args.user, dir=constants.LOGGING_DIR)
 
             if args.run_name is not None:
                 wandb.run.name = args.run_name
@@ -184,6 +184,7 @@ if __name__ == '__main__':
     parser.add_argument('--cuda', action='store_true', help='If present, the model will be loaded and calculations performed on the GPU if possible')
     parser.add_argument('--detailed-eval', action='store_true', help='If present, will run evaluation on every cifar corruption type and save results in the logging directory')
     parser.add_argument('--run-name', type=str, default=None, help='name for the run in wandb')
+    parser.add_argument('--user', type=str, default=None, help='User name for wandb')
     parser.add_argument('--toggle-moe-at', type=int, default=None, help='')
 
     args = parser.parse_args()
