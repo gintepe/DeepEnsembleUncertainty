@@ -74,9 +74,9 @@ def eval(args):
         # for compatability due to architecture changes
         try:
             fit_prec = trainer.model.gating_network.net.prior_precision
-            # if args.fit_et:
-            #     trainer.model.gating_network.set_entropy_threshold(val_loader, percentile=90)
-            #     model_args.entropy_threshold = trainer.model.gating_network.entropy_threshold
+            if args.fit_et:
+                trainer.model.gating_network.set_entropy_threshold(val_loader, percentile=90)
+                model_args.entropy_threshold = trainer.model.gating_network.entropy_threshold
         except:
             fit_prec = trainer.model.gating_network.prior_precision
 
@@ -93,9 +93,6 @@ def eval(args):
         for prec in laplace_precisions:
             try:
                 trainer.model.gating_network.net.prior_precision = prec
-                if args.fit_et:
-                    trainer.model.gating_network.set_entropy_threshold(val_loader, percentile=75, device=device)
-                    model_args.entropy_threshold = trainer.model.gating_network.entropy_threshold
             except:
                 trainer.model.gating_network.prior_precision = prec
 

@@ -7,7 +7,6 @@ import torch.nn.init as init
 # For the regression experiments we could potentially compare to, a very simple set-up, with a single hidden layer 
 # with 50 or 100 units was used. the main challenge would probably come from adapting the full set-up and metric tracking 
 
-#TODO: more manual weight initialisation?
 class LeNet5(nn.Module):
     # for the 28 by 28 mnist
     """
@@ -50,9 +49,6 @@ class LeNet5(nn.Module):
         return x
 
 
-# TODO there should be some consistency in batchnorm use, 
-# I don't know what the arguments are
-# for using it before activation
 class MLP(nn.Module):
     """
     Simple multi-layer perceptron. Consistent with nets used in [2].
@@ -226,9 +222,7 @@ class ResNet(nn.Module):
         if out.size(0) > 0:
             out = out.view(out.size(0), -1)
         else:
-            # print(out.shape)
             out = out.flatten()
             out = out.view(out.size(0), 64)
-            # print(out.shape)
         out = self.linear(out)
         return out

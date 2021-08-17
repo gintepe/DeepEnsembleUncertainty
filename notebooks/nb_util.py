@@ -108,9 +108,10 @@ class MNISTMultiRunData:
         shifts = self.runs[0].get_metric(metric_name_shifted, metric_name_val, shift, include_val)[2]
         return means, stds, shifts
 
+colors = ['#2a9d8f', '#e9c46a', '#e76f51', '#9b2226', '#540d6e', '#b6465f', '#005f73', '#264653']
 # colors = ['#264653', '#2a9d8f', '#e9c46a', '#e76f51', '#9b2226', '#540d6e', '#b6465f', '#005f73']
 # colors = [ '#2a9d8f', '#e76f51', '#6a040f', '#540d6e', '#b6465f', '#005f73', '#264653', '#e9c46a', 'green']
-colors = [ '#2a9d8f', '#e76f51', '#6a040f', '#264653', '#e9c46a', '#540d6e', '#b6465f', '#014f86']
+# colors = [ '#2a9d8f', '#e76f51', '#6a040f', '#264653', '#e9c46a', '#540d6e', '#b6465f', '#014f86']
 light_green = '#2a9d8f'
 orange = '#e76f51'
 dark_greeen = '#264653'
@@ -161,13 +162,14 @@ def plot_single_metric_error_mnist(
     sparse_ticks=None,
     legend_title=None,
     extra_rd = None,
+    leg_names=None,
 ):
-    for rd, col in zip(rds, colors):
+    for rd, col, i in zip(rds, colors, range(len(rds))):
         means, stds, shifts = rd.get_metric(metric_name_shifted, metric_name_val, shift, include_val)
         labels = (['Val'] if include_val else []) + ['Test'] + shifts[1:]
         proxy_vals = np.arange(len(labels))
 
-        ax.plot(proxy_vals, means, color=col, label=convert_name(rd.name, legend_param_only))
+        ax.plot(proxy_vals, means, color=col, label=convert_name(rd.name, legend_param_only) if leg_names is None else leg_names[i])
         ax.fill_between(proxy_vals, means - 2*stds, means + 2*stds, color=col, alpha=error_alpha)
     
     if extra_rd:
@@ -339,13 +341,14 @@ def plot_single_metric_error_cifar(
     sparse_ticks=None,
     legend_title=None,
     extra_rd = None,
+    leg_names=None,
 ):
-    for rd, col in zip(rds, colors):
+    for rd, col, i in zip(rds, colors, range(len(rds))):
         means, stds, shifts = rd.get_metric_avg(metric_name_shifted, metric_name_val, include_val)
         labels = (['Val'] if include_val else []) + ['Test'] + shifts[1:]
         proxy_vals = np.arange(len(labels))
 
-        ax.plot(proxy_vals, means, color=col, label=convert_name(rd.name, legend_param_only))
+        ax.plot(proxy_vals, means, color=col, label=convert_name(rd.name, legend_param_only) if leg_names is None else leg_names[i])
         ax.fill_between(proxy_vals, means - 2*stds, means + 2*stds, color=col, alpha=error_alpha)
 
     if extra_rd:

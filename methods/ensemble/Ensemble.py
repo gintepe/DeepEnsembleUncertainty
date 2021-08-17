@@ -261,7 +261,6 @@ class NCEnsemble(BaseEnsemble):
             cn = torch.nn.functional.cross_entropy(pred, ground_truth)
 
             reg = torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1) - mean_probs) * sums[:, i, :], dim=-1))
-            # reg = torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1) - mean_probs) * (mean_probs - nn.functional.softmax(pred, dim=-1)), dim=-1))
 
             losses.append(cn + self.l*reg)
             
@@ -372,7 +371,8 @@ class CEEnsemble(BaseEnsemble):
             for j, pred_extra in enumerate(pred_logits):
                 if not i == j:
                     # reg += torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach() )/(len(pred_logits)*len(pred_logits)-1)
-                    reg += torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach(), dim=-1))/(len(pred_logits)*len(pred_logits)-1)
+                    # reg += torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach(), dim=-1))/(len(pred_logits)*(len(pred_logits)-1))
+                    reg += torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach(), dim=-1))/(len(pred_logits)-1)
             
             losses.append(cn + self.l*reg)
             
