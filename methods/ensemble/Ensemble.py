@@ -145,7 +145,6 @@ class Ensemble(BaseEnsemble):
         """
 
         print(f'Initialising an ensemble of {args.n} networks')
-        # criterion = nn.CrossEntropyLoss()
         criterion = self.ensemble_cn
         self.n = args.n
         super().__init__(args, criterion, device)
@@ -370,8 +369,6 @@ class CEEnsemble(BaseEnsemble):
             reg = 0
             for j, pred_extra in enumerate(pred_logits):
                 if not i == j:
-                    # reg += torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach() )/(len(pred_logits)*len(pred_logits)-1)
-                    # reg += torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach(), dim=-1))/(len(pred_logits)*(len(pred_logits)-1))
                     reg += torch.mean(torch.sum((nn.functional.softmax(pred, dim=-1)) * nn.functional.log_softmax(pred_extra, dim=-1).detach(), dim=-1))/(len(pred_logits)-1)
             
             losses.append(cn + self.l*reg)

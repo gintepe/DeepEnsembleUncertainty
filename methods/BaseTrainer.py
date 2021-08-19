@@ -85,7 +85,6 @@ class BaseTrainer():
             return None
 
 
-    # TODO the following should probably always be the same 
     @abstractmethod
     def predict_val(self, x):
         """ 
@@ -118,7 +117,6 @@ class BaseTrainer():
         - loss (float): last training loss value
         """
         if isinstance(self.optimizer, list):
-            # TODO: figure out if I can save the list of optimizers nicely
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.model.state_dict(),
@@ -150,7 +148,6 @@ class BaseTrainer():
         else:
             raise ValueError('invalid network type')
 
-    # TODO: doesn't need to be an instance method
     def log_info(self, train_acc, val_loss, val_acc, val_conf, val_avg_acc, val_avg_dis, batches, epoch):
         """ 
         Log the given information to the weights and biasses logger. 
@@ -299,7 +296,6 @@ class BaseTrainer():
         - log (bool): whether to use the weights and biases logger.
         """
         print(self.optimizer)
-        # print(self.schedulers[0])
         batches = 0
 
         # we will call this large enough
@@ -307,9 +303,6 @@ class BaseTrainer():
         no_val_improvement = 0
 
         self.model.to(self.device)
-        
-        # if log:
-        #     wandb.watch(self.model)
         
         for epoch in range(1, epochs + 1):
             print(f'Epoch {epoch}')

@@ -75,7 +75,7 @@ class DenseBasicMoE(nn.Module):
 
         importance = weights.sum(0)
         
-        loss = cv_squared(importance)# + cv_squared(load)
+        loss = cv_squared(importance)
         loss *= loss_coef
 
         combined_pred = torch.sum(
@@ -221,9 +221,7 @@ class SparseMoE(nn.Module):
         """
 
         super(SparseMoE, self).__init__()
-        # self.noisy_gating = noisy_gating
         self.num_experts = n
-        # self.input_size = input_size
         self.k = k
         
         # instantiate experts
@@ -283,9 +281,7 @@ class SparseMoE(nn.Module):
         gating_out = self.gating_network(x)
 
         wandb.log({"gating_out": wandb.Histogram(gating_out.detach().cpu())})
-        
-        # removed since gating out should be softmax'ed already
-        # gating_out = self.softmax(gating_out)
+    
 
         top_k_logits, top_k_indices = gating_out.topk(self.k, dim=-1)
         zeros = torch.zeros_like(gating_out, requires_grad=True)

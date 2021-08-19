@@ -48,12 +48,8 @@ class WrapperModel(nn.Module):
                                     preds, dim=0), 
                                 dim=-1) * torch.unsqueeze(weights.T, -1), 
                             dim=0)
-        
-        # weight_mask = weights > 1/self.n
-        # part_sizes = weight_mask.sum(0).cpu().numpy()
-        # disp = SparseDispatcher(self.n, weight_mask, labels)
 
-        return weights, combined_pred, preds#, part_sizes, disp.part_sizes_by_label(), 0
+        return weights, combined_pred, preds
 
 class NoiseDataset(Dataset):
     def __init__(self, img_size, channels, n, size):
@@ -133,14 +129,6 @@ def get_equivalent_noise_loader(loader, n_experts):
 
     return DataLoader(noise_data, loader.batch_size)
 
-
-# def ensemble_criterion(gating_out, preds, combined_pred, gt, gate_gt):
-#     return basic_cross_entropy(combined_pred, gt)
-
-# def loss_sum_criterion(gating_out, preds, combined_pred, gt, gate_gt):
-#     losses = torch.stack([F.cross_entropy(pred, gt, reduction='none') for pred in preds], dim=1)
-#     losses = losses * gating_out
-#     return losses.sum() / gating_out.shape[0]
 
 def gating_criterion(gating_out, preds, combined_pred, gt, gate_gt):
     return basic_cross_entropy(gating_out, gate_gt)
@@ -337,9 +325,9 @@ if __name__ == '__main__':
         gating_network = get_gating_network(trainer.get_model_class(model_args), args.g_type, data_feat, n)
 
         if args.g_training_mode == 'ensemble':
-            criterion = ensemble_criterion
+            criterion = metrics.ensemble_criterion
         elif args.g_training_mode == 'sum':
-            criterion = loss_sum_criterion
+            criterion = metrics.loss_sum_criterion
         else:
             criterion = gating_criterion
 

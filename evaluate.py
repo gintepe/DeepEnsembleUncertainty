@@ -186,7 +186,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # if args.detailed_cifar_eval:
-    #     detailed_eval_save(args)
-    # else:
     eval(args)

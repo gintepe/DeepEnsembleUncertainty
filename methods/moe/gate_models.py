@@ -330,8 +330,6 @@ class SimpleMCDropConnectGate(nn.Module):
             return combined_pred
 
 
-# could amend this to be "or Conv layer" and have it the same as resnet init
-# could also be outsourced to the util file
 def init_weights(m):
     """
     Custom weight initialisation for module.
@@ -414,10 +412,6 @@ class GateWrapper(nn.Module):
             out = self.softmax(out)
 
         if self.gate_by_entropy and not self.training:
-            # uniform for high entropy, gated for low:
-            # entropy = scipy.stats.entropy(out.cpu().numpy(), axis=1)
-            # high_entropy_idxs = np.where(entropy > self.entropy_threshold)
-            # out[high_entropy_idxs] = torch.ones(out.shape[1]) / out.shape[1]
 
             # gated for high entropy, top-1 for low
             entropy = scipy.stats.entropy(out.cpu().numpy(), axis=1)

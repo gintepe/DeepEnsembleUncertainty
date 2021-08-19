@@ -221,7 +221,6 @@ def plot_single_metric_error_bar_mnist(
                 methods.append(rd.name)
     n = len(methods)
 
-    # proxy_loc = np.concatenate([np.arange((n+1)*i + 1, (n+1)*i + n+1) for i, pick in enumerate(picks)])
     proxy_loc = np.concatenate([np.arange((n+1)*i, (n+1)*i + n) for i, pick in enumerate(picks)])
 
     ax.bar(proxy_loc, bar_level, color=cols, width=1, label=methods,edgecolor='white', alpha=alpha)
@@ -229,7 +228,6 @@ def plot_single_metric_error_bar_mnist(
              fmt='o', capsize=2, ms=2, color=dark_greeen)
 
     ax.set_xticks(proxy_loc)
-    # ax.set_xticklabels(methods, fontsize=fontsize,color=dark_greeen)
     x_labels=[]
     if len(x_label) > 0:
         x_labels = [""]*len(proxy_loc)
@@ -398,7 +396,6 @@ def plot_single_metric_error_bar_cifar(
                 methods.append(rd.name)
     n = len(methods)
 
-    # proxy_loc = np.concatenate([np.arange((n+1)*i + 1, (n+1)*i + n+1) for i, pick in enumerate(picks)])
     proxy_loc = np.concatenate([np.arange((n+1)*i, (n+1)*i + n) for i, pick in enumerate(picks)])
 
     ax.bar(proxy_loc, bar_level, color=cols, width=1, label=methods,edgecolor='white', alpha=alpha)
@@ -406,7 +403,6 @@ def plot_single_metric_error_bar_cifar(
              fmt='o', capsize=2, ms=2, color=dark_greeen)
 
     ax.set_xticks(proxy_loc)
-    # ax.set_xticklabels(methods, fontsize=fontsize,color=dark_greeen)
     x_labels=[]
     if len(x_label) > 0:
         x_labels = [""]*len(proxy_loc)
@@ -450,22 +446,6 @@ def plot_single_metric_boxplot_cifar(
 
     ax.grid(axis='y', color=dark_greeen, alpha=0.35, linestyle='--')
 
-    
-    # ----------------v1-------------
-    # for pick in picks:
-    #     for rd, col in zip(rds, colors[1:]):
-    #         vals = rd.get_metric_shifted(metric_name_shifted, metric_name_val)
-    #         labels = range(1, 6)
-    #         metric_data.append(vals[:, pick])
-    #         cols.append(col)
-    #         if len(methods) < len(rds):
-    #             methods.append(rd.name)
-    # n = len(methods)
-    # proxy_loc = np.concatenate([np.arange((n+1)*i + 1, (n+1)*i + n+1) for i, pick in enumerate(picks)])
-    # for val, col, loc in zip(metric_data, cols, proxy_loc):
-    #     bp = ax.boxplot(val, patch_artist=True, widths=0.75, positions=[loc], boxprops={'color':dark_greeen, 'facecolor':col, 'alpha':0.6}, medianprops={'color':col}, whiskerprops={'color':dark_greeen}, capprops={'color':dark_greeen}, showfliers=False)
-    
-    # ------------------v2-------------
     for rd, col in zip(rds, colors):
         vals = rd.get_metric_shifted(metric_name_shifted, metric_name_val)
         if include_id:
@@ -499,7 +479,6 @@ def plot_single_metric_boxplot_cifar(
 
     # -----------------shared---------------------
     ax.set_xticks(proxy_loc)
-    # ax.set_xticklabels(methods, fontsize=fontsize,color=dark_greeen)
     x_labels=[]
     if len(x_label) > 0:
         x_labels = [""]*len(proxy_loc)

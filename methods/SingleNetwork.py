@@ -31,7 +31,6 @@ class SingleNetwork(BaseTrainer):
         """
         model_class = self.get_model_class(args)
 
-        #TODO: maybe model classes should just take args for intialisation??
         if args.dataset_type == 'cifar100':
             return model_class(num_classes=100)
         else:
@@ -42,7 +41,6 @@ class SingleNetwork(BaseTrainer):
         Implements base class's abstract method.
         Predict for x during a validation step.
         """
-        # return self.model(x)
         return torch.nn.functional.softmax(self.model(x), dim=-1), None
 
     def predict_test(self, x):
